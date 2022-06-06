@@ -5,8 +5,9 @@ extern "C"
 
 #include "rmw_hazcat/allocators/cpu_ringbuf_allocator.h"
 
-struct cpu_ringbuf_allocator * create_cpu_ringbuf_allocator(size_t item_size, size_t ring_size) {
-  struct cpu_ringbuf_allocator * alloc = (struct cpu_ringbuf_allocator*)create_shared_allocator(
+struct cpu_ringbuf_allocator * create_cpu_ringbuf_allocator(size_t item_size, size_t ring_size)
+{
+  struct cpu_ringbuf_allocator * alloc = (struct cpu_ringbuf_allocator *)create_shared_allocator(
     NULL, sizeof(struct cpu_ringbuf_allocator) + item_size * ring_size, CPU, ALLOC_RING, 0);
 
   alloc->count = 0;
@@ -17,8 +18,9 @@ struct cpu_ringbuf_allocator * create_cpu_ringbuf_allocator(size_t item_size, si
   return alloc;
 }
 
-int cpu_ringbuf_allocate(void* self, size_t size) {
-  struct cpu_ringbuf_allocator * s = (struct cpu_ringbuf_allocator*)self;
+int cpu_ringbuf_allocate(void * self, size_t size)
+{
+  struct cpu_ringbuf_allocator * s = (struct cpu_ringbuf_allocator *)self;
   if (s->count == s->ring_size) {
     // Allocator full
     return -1;
@@ -34,8 +36,9 @@ int cpu_ringbuf_allocate(void* self, size_t size) {
   return ret;
 }
 
-void cpu_ringbuf_deallocate(void* self, int offset) {
-  struct cpu_ringbuf_allocator * s = (struct cpu_ringbuf_allocator*)self;
+void cpu_ringbuf_deallocate(void * self, int offset)
+{
+  struct cpu_ringbuf_allocator * s = (struct cpu_ringbuf_allocator *)self;
   if (s->count == 0) {
     return;       // Allocator empty, nothing to deallocate
   }
@@ -52,10 +55,12 @@ void cpu_ringbuf_deallocate(void* self, int offset) {
   s->count = forward_it - s->rear_it;
 }
 
-struct hma_allocator * cpu_ringbuf_remap(struct shared * temp) {
+struct hma_allocator * cpu_ringbuf_remap(struct shared * temp)
+{
   // Create a local mapping, and populate function pointers so they resolve in this process
-  struct local * fps = (struct local*)mmap(NULL,
-      sizeof(struct local), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS, 0, 0);
+  struct local * fps = (struct local *)mmap(
+    NULL,
+    sizeof(struct local), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS, 0, 0);
   populate_local_fn_pointers(fps, CPU_RINGBUF_IMPL);
 
   // Map in shared portion of allocator

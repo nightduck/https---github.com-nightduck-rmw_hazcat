@@ -5,9 +5,10 @@ extern "C"
 
 #include "rmw_hazcat/allocators/cuda_ringbuf_allocator.h"
 
-struct cuda_ringbuf_allocator * create_cuda_ringbuf_allocator(size_t item_size, size_t ring_size) {
-  void* hint = NULL;
-  
+struct cuda_ringbuf_allocator * create_cuda_ringbuf_allocator(size_t item_size, size_t ring_size)
+{
+  void * hint = NULL;
+
   CUmemAllocationProp props = {};
   props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
   props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
@@ -31,8 +32,10 @@ struct cuda_ringbuf_allocator * create_cuda_ringbuf_allocator(size_t item_size, 
 
   // Export to create shared handle.
   ShareableHandle ipc_handle;
-  CHECK_DRV(cuMemExportToShareableHandle((void *)&ipc_handle, original_handle,
-    CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR, 0));
+  CHECK_DRV(
+    cuMemExportToShareableHandle(
+      (void *)&ipc_handle, original_handle,
+      CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR, 0));
 
   // Create CUDA allocation and remap self
   CUdeviceptr d_addr;
@@ -51,8 +54,8 @@ struct cuda_ringbuf_allocator * create_cuda_ringbuf_allocator(size_t item_size, 
   // Free handle. Memory will stay valid as long as it is mapped
   CHECK_DRV(cuMemRelease(original_handle));
 
-  struct cuda_ringbuf_allocator * alloc = (struct cuda_ringbuf_allocator*)create_shared_allocator(
-    (void*)(uintptr_t)d_addr, sizeof(struct cuda_ringbuf_allocator), CUDA, ALLOC_RING, 0);
+  struct cuda_ringbuf_allocator * alloc = (struct cuda_ringbuf_allocator *)create_shared_allocator(
+    (void *)(uintptr_t)d_addr, sizeof(struct cuda_ringbuf_allocator), CUDA, ALLOC_RING, 0);
 
   // TODO: Construct strategy
   alloc->count = 0;
@@ -64,29 +67,31 @@ struct cuda_ringbuf_allocator * create_cuda_ringbuf_allocator(size_t item_size, 
   return alloc;
 }
 
-int cuda_ringbuf_allocate(void* self, size_t size) {
-  struct cuda_ringbuf_allocator * s = (struct cuda_ringbuf_allocator*)self;
-  
-    if (s->count == s->ring_size) {
-      // Allocator full
-      return -1;
-    } else {
-      int forward_it = (s->rear_it + s->count) % s->ring_size;
+int cuda_ringbuf_allocate(void * self, size_t size)
+{
+  struct cuda_ringbuf_allocator * s = (struct cuda_ringbuf_allocator *)self;
 
-      // Give address relative to shared object
-      int ret = PTR_TO_OFFSET(s, sizeof(struct cuda_ringbuf_allocator) + s->item_size * forward_it);
+  if (s->count == s->ring_size) {
+    // Allocator full
+    return -1;
+  } else {
+    int forward_it = (s->rear_it + s->count) % s->ring_size;
 
-      // Update count of how many elements in pool
-      s->count++;
+    // Give address relative to shared object
+    int ret = PTR_TO_OFFSET(s, sizeof(struct cuda_ringbuf_allocator) + s->item_size * forward_it);
 
-      return ret;
-    }
+    // Update count of how many elements in pool
+    s->count++;
+
+    return ret;
+  }
 
   return 12345;
 }
 
-void cuda_ringbuf_deallocate(void* self, int offset) {
-  struct cuda_ringbuf_allocator * s = (struct cuda_ringbuf_allocator*)self;
+void cuda_ringbuf_deallocate(void * self, int offset)
+{
+  struct cuda_ringbuf_allocator * s = (struct cuda_ringbuf_allocator *)self;
   if (s->count == 0) {
     return;       // Allocator empty, nothing to deallocate
   }
@@ -103,22 +108,27 @@ void cuda_ringbuf_deallocate(void* self, int offset) {
   s->count = forward_it - s->rear_it;
 }
 
-void cuda_ringbuf_copy_from(void* there, void* here, size_t size) {
-    cudaMemcpy(there, here, size, cudaMemcpyHostToDevice);
+void cuda_ringbuf_copy_from(void * there, void * here, size_t size)
+{
+  cudaMemcpy(there, here, size, cudaMemcpyHostToDevice);
 }
 
-void cuda_ringbuf_copy_to(void* there, void* here, size_t size) {
-    cudaMemcpy(here, there, size, cudaMemcpyDeviceToHost);
+void cuda_ringbuf_copy_to(void * there, void * here, size_t size)
+{
+  cudaMemcpy(here, there, size, cudaMemcpyDeviceToHost);
 }
 
-void cuda_ringbuf_copy(void* there, void* here, size_t size, struct hma_allocator * dest_alloc) {
-    void * interm = malloc(size);
-    cuda_ringbuf_copy_to(interm, here, size);
-    dest_alloc->copy_from(interm, there, size);
+void cuda_ringbuf_copy(void * there, void * here, size_t size, struct hma_allocator * dest_alloc)
+{
+  void * interm = malloc(size);
+  cuda_ringbuf_copy_to(interm, here, size);
+  dest_alloc->copy_from(interm, there, size);
 }
 
-struct hma_allocator * cuda_ringbuf_remap(struct shared * temp) {
-  struct cuda_ringbuf_allocator * cuda_alloc = ALLOC_FROM_SHARED(temp, struct cuda_ringbuf_allocator);
+struct hma_allocator * cuda_ringbuf_remap(struct shared * temp)
+{
+  struct cuda_ringbuf_allocator * cuda_alloc =
+    ALLOC_FROM_SHARED(temp, struct cuda_ringbuf_allocator);
   size_t pool_size = cuda_alloc->item_size * cuda_alloc->ring_size;
 
   // TODO: This is breaking on "invalid device ordinal". Something about passing a 0 to
@@ -126,8 +136,10 @@ struct hma_allocator * cuda_ringbuf_remap(struct shared * temp) {
   // and investigate device IDs with cuDeviceGetCount, cuDeviceGet, etc
   // Get shareable handle
   CUmemGenericAllocationHandle handle;
-  CHECK_DRV(cuMemImportFromShareableHandle(&handle, &(cuda_alloc->ipc_handle),
-    CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR));
+  CHECK_DRV(
+    cuMemImportFromShareableHandle(
+      &handle, &(cuda_alloc->ipc_handle),
+      CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR));
 
   // Create CUDA allocation and remap self
   CUdeviceptr d_addr;
@@ -144,8 +156,9 @@ struct hma_allocator * cuda_ringbuf_remap(struct shared * temp) {
   CHECK_DRV(cuMemSetAccess(d_addr, pool_size, &accessDesc, 1));
 
   // Create a local mapping, and populate function pointers so they resolve in this process
-  struct local * fps = (struct local*)mmap((void*)(uintptr_t)d_addr,
-      sizeof(struct local), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS, 0, 0);
+  struct local * fps = (struct local *)mmap(
+    (void *)(uintptr_t)d_addr,
+    sizeof(struct local), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS, 0, 0);
   populate_local_fn_pointers(fps, CUDA_RINGBUF_IMPL);
 
   // Map in shared portion of allocator

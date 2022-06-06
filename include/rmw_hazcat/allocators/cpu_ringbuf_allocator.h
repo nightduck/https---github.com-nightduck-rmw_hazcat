@@ -11,15 +11,17 @@ extern "C"
 #include "hma_template.h"
 
 
-struct cpu_ringbuf_allocator {
+struct cpu_ringbuf_allocator
+{
   union {
-    struct {
+    struct
+    {
       // Exist in local memory, pointing to static functions
-      int   (*const allocate)   (void * self, size_t size);
-      void  (*const deallocate) (void * self, int offset);
-      void  (*const copy_from)  (void * here, void * there, size_t size);
-      void  (*const copy_to)    (void * here, void * there, size_t size);
-      void  (*const copy)       (void * here, void * there, size_t size, struct hma_allocator * dest_alloc);
+      int  (* allocate)   (void *, size_t);
+      void (* deallocate) (void *, int);
+      void (* copy_from)  (void *, void *, size_t);
+      void (* copy_to)    (void *, void *, size_t);
+      void (* copy)       (void *, void *, size_t, struct hma_allocator *);
 
       // Exist in shared memory
       const int shmem_id;
@@ -36,9 +38,9 @@ struct cpu_ringbuf_allocator {
 
 struct cpu_ringbuf_allocator * create_cpu_ringbuf_allocator(size_t item_size, size_t ring_size);
 
-int cpu_ringbuf_allocate(void* self, size_t size);
+int cpu_ringbuf_allocate(void * self, size_t size);
 
-void cpu_ringbuf_deallocate(void* self, int offset);
+void cpu_ringbuf_deallocate(void * self, int offset);
 
 struct hma_allocator * cpu_ringbuf_remap(struct shared * temp);
 

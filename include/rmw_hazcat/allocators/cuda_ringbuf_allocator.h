@@ -15,41 +15,45 @@ extern "C"
 
 
 static inline void
-checkDrvError(CUresult res, const char *tok, const char *file, unsigned line)
+checkDrvError(CUresult res, const char * tok, const char * file, unsigned line)
 {
-    if (res != CUDA_SUCCESS) {
-        const char *errStr = NULL;
-        (void)cuGetErrorString(res, &errStr);
-        printf("%s:%d %sfailed (%d): %s\n", file, line, tok, (unsigned)res, errStr);
-        abort();
-    }
+  if (res != CUDA_SUCCESS) {
+    const char * errStr = NULL;
+    (void)cuGetErrorString(res, &errStr);
+    printf("%s:%d %sfailed (%d): %s\n", file, line, tok, (unsigned)res, errStr);
+    abort();
+  }
 }
 
 #define CHECK_DRV(x) checkDrvError(x, #x, __FILE__, __LINE__);
 
 #if defined(__linux__)
-struct ipcHandle_st {
-    int socket;
-    char *socketName;
+struct ipcHandle_st
+{
+  int socket;
+  char * socketName;
 };
 typedef int ShareableHandle;
 #elif defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
-struct ipcHandle_st {
-    std::vector<HANDLE> hMailslot; // 1 Handle in case of child and `num children` Handles for parent.
+struct ipcHandle_st
+{
+  std::vector < HANDLE > hMailslot; // 1 Handle in case of child and `num children` Handles for parent.
 };
 typedef HANDLE ShareableHandle;
 #endif
 
 
-struct cuda_ringbuf_allocator {
+struct cuda_ringbuf_allocator
+{
   union {
-    struct {
+    struct
+    {
       // Exist in local memory, pointing to static functions
-      int   (*const allocate)   (void * self, size_t size);
-      void  (*const deallocate) (void * self, int offset);
-      void  (*const copy_from)  (void * here, void * there, size_t size);
-      void  (*const copy_to)    (void * here, void * there, size_t size);
-      void  (*const copy)       (void * here, void * there, size_t size, struct hma_allocator * dest_alloc);
+      int  (* allocate)   (void *, size_t);
+      void (* deallocate) (void *, int);
+      void (* copy_from)  (void *, void *, size_t);
+      void (* copy_to)    (void *, void *, size_t);
+      void (* copy)       (void *, void *, size_t, struct hma_allocator *);
 
       // Exist in shared memory
       const int shmem_id;
@@ -67,15 +71,15 @@ struct cuda_ringbuf_allocator {
 
 struct cuda_ringbuf_allocator * create_cuda_ringbuf_allocator(size_t item_size, size_t ring_size);
 
-int cuda_ringbuf_allocate(void* self, size_t size);
+int cuda_ringbuf_allocate(void * self, size_t size);
 
-void cuda_ringbuf_deallocate(void* self, int offset);
+void cuda_ringbuf_deallocate(void * self, int offset);
 
-void cuda_ringbuf_copy_from(void* there, void* here, size_t size);
+void cuda_ringbuf_copy_from(void * there, void * here, size_t size);
 
-void cuda_ringbuf_copy_to(void* there, void* here, size_t size);
+void cuda_ringbuf_copy_to(void * there, void * here, size_t size);
 
-void cuda_ringbuf_copy(void* there, void* here, size_t size, struct hma_allocator * dest_alloc);
+void cuda_ringbuf_copy(void * there, void * here, size_t size, struct hma_allocator * dest_alloc);
 
 struct hma_allocator * cuda_ringbuf_remap(struct shared * temp);
 

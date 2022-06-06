@@ -5,47 +5,54 @@ extern "C"
 
 #include "rmw_hazcat/allocators/example_allcoator.h"
 
-struct example_allocator * create_example_allocator(size_t item_size, size_t ring_size) {
+struct example_allocator * create_example_allocator(size_t item_size, size_t ring_size)
+{
   // TODO: Find address you want your allocator to start at. Might be determined by the memory
   //       granularity of the device it is managing. Shouldn't overlap with temp
-  void* hint = NULL;
+  void * hint = NULL;
 
   // TODO: Maybe reserve an address space if your device API requires it
 
-  struct example_allocator * alloc = (struct example_allocator*)create_shared_allocator(
+  struct example_allocator * alloc = (struct example_allocator *)create_shared_allocator(
     hint, sizeof(struct example_allocator), DEVICE, ALLOC_STRAT, 0);
-    // TODO: Change DEVICE and ALLOC_STRAT above
+  // TODO: Change DEVICE and ALLOC_STRAT above
 
   // TODO: Construct strategy
 }
 
-int example_allocate(void* self, size_t size) {
-  struct example_allocator * s = (struct example_allocator*)self;
-  
+int example_allocate(void * self, size_t size)
+{
+  struct example_allocator * s = (struct example_allocator *)self;
+
   // TODO: Implement allocation method
 
   return 12345;
 }
 
-void example_deallocate(void* self, int offset) {
-  struct example_allocator * s = (struct example_allocator*)self;
-  
+void example_deallocate(void * self, int offset)
+{
+  struct example_allocator * s = (struct example_allocator *)self;
+
   // TODO: Implement deallocation method
 }
 
-void example_copy_from(void* there, void* here, size_t size) {
+void example_copy_from(void * there, void * here, size_t size)
+{
   // TODO: Implement method to copy from main memory into self
 }
 
-void example_copy_to(void* there, void* here, size_t size) {
+void example_copy_to(void * there, void * here, size_t size)
+{
   // TODO: Implement method to copy to main memory from self
 }
 
-void example_copy(void* there, void* here, size_t size, struct hma_allocator * dest_alloc) {
+void example_copy(void * there, void * here, size_t size, struct hma_allocator * dest_alloc)
+{
   // TODO: Implement method to copy to non-cpu memory from self
 }
 
-struct hma_allocator * example_remap(struct shared * temp) {
+struct hma_allocator * example_remap(struct shared * temp)
+{
   // TODO: Optional, cast the shared portion of the allocator to your allocator type to read from.
   //       it. Be careful not to reference any of the function pointers, as this will dereference
   //       unmapped memory.
@@ -56,13 +63,14 @@ struct hma_allocator * example_remap(struct shared * temp) {
 
   // TODO: Find address you want your allocator to start at. Might be determined by the memory
   //       granularity of the device it is managing. Shouldn't overlap with temp
-  void* hint = NULL;
+  void * hint = NULL;
 
   // TODO: Maybe reserve an address space if your device API requires it
 
   // Create a local mapping, and populate function pointers so they resolve in this process
-  struct local * fps = (struct local*)mmap(hint,
-      sizeof(struct  local), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS, 0, 0);
+  struct local * fps = (struct local *)mmap(
+    hint,
+    sizeof(struct  local), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS, 0, 0);
   populate_local_fn_pointers(fps, EXAMPLE_IMPL);
 
   // Map in shared portion of allocator

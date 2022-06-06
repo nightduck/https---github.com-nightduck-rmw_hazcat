@@ -12,15 +12,17 @@ extern "C"
 
 // TODO: Ctrl+H to replace all "EXAMPLE" and "example" with the name of your allocator
 
-struct example_allocator {
+struct example_allocator
+{
   union {
-    struct {
+    struct
+    {
       // Exist in local memory, pointing to static functions
-      int   (*const allocate)   (void * self, size_t size);
-      void  (*const deallocate) (void * self, int offset);
-      void  (*const copy_from)  (void * here, void * there, size_t size);
-      void  (*const copy_to)    (void * here, void * there, size_t size);
-      void  (*const copy)       (void * here, void * there, size_t size, struct hma_allocator * dest_alloc);
+      int  (* allocate)   (void *, size_t);
+      void (* deallocate) (void *, int);
+      void (* copy_from)  (void *, void *, size_t);
+      void (* copy_to)    (void *, void *, size_t);
+      void (* copy)       (void *, void *, size_t, struct hma_allocator *);
 
       // Exist in shared memory
       const int shmem_id;
@@ -36,15 +38,15 @@ struct example_allocator {
 
 struct example_allocator * create_example_allocator(size_t item_size, size_t ring_size);
 
-int example_allocate(void* self, size_t size);
+int example_allocate(void * self, size_t size);
 
-void example_deallocate(void* self, int offset);
+void example_deallocate(void * self, int offset);
 
-void example_copy_from(void* there, void* here, size_t size);
+void example_copy_from(void * there, void * here, size_t size);
 
-void example_copy_to(void* there, void* here, size_t size);
+void example_copy_to(void * there, void * here, size_t size);
 
-void example_copy(void* there, void* here, size_t size, struct hma_allocator * dest_alloc);
+void example_copy(void * there, void * here, size_t size, struct hma_allocator * dest_alloc);
 
 struct hma_allocator * example_remap(struct shared * temp);
 

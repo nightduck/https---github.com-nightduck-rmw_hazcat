@@ -19,7 +19,6 @@ endif()
 # find dependencies
 find_package(CUDA REQUIRED)
 find_package(ament_cmake REQUIRED)
-find_package(rosidl_runtime_c REQUIRED)
 
 SET(CUDA_SEPARABLE_COMPILATION ON)
 CUDA_SELECT_NVCC_ARCH_FLAGS(ARCH_FLAGS Auto)
@@ -29,25 +28,25 @@ include_directories(include)
 
 include_directories(${CUDA_INCLUDE_DIRS})
 
-set(${PROJECT_NAME}_sources
+set(${PROJECT_NAME}_allocator_sources
   src/allocators/hma_template.c
   src/allocators/cpu_ringbuf_allocator.c
   src/allocators/cuda_ringbuf_allocator.c
   )
 
-add_library(allocators ${${PROJECT_NAME}_sources})
-target_include_directories(allocators PUBLIC
+add_library(${PROJECT_NAME}_allocators ${${PROJECT_NAME}_allocator_sources})
+target_include_directories(${PROJECT_NAME}_allocators PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<INSTALL_INTERFACE:include>")
 
 install(
-  TARGETS allocators EXPORT ${PROJECT_NAME}
+  TARGETS ${PROJECT_NAME}_allocators EXPORT ${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin)
 
 ament_export_include_directories(include)
-ament_export_libraries(allocators)
+ament_export_libraries(${PROJECT_NAME}_allocators)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -64,11 +63,12 @@ if(BUILD_TESTING)
 
   find_package(ament_cmake_gtest REQUIRED)
   find_package(test_msgs REQUIRED)
+  find_package(std_msgs REQUIRED)
 
   ament_add_gtest(allocator_test test/hazcat_allocator_test.cpp)
-  target_link_libraries(allocator_test allocators cuda)
+  target_link_libraries(allocator_test ${PROJECT_NAME}_allocators cuda)
   ament_target_dependencies(allocator_test
-    CUDA test_msgs
+    CUDA test_msgs std_msgs
   )
 endif()
 

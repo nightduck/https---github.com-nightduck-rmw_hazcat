@@ -30,7 +30,9 @@ include_directories(include)
 include_directories(${CUDA_INCLUDE_DIRS})
 
 set(${PROJECT_NAME}_sources
-  src/allocators/hma_template.cpp
+  src/allocators/hma_template.c
+  src/allocators/cpu_ringbuf_allocator.c
+  src/allocators/cuda_ringbuf_allocator.c
   )
 
 add_library(allocators ${${PROJECT_NAME}_sources})

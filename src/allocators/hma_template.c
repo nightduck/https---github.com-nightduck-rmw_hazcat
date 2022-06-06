@@ -1,6 +1,12 @@
-#include "rmw_hazcat/allocators/hma_template.h"
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+//#include "rmw_hazcat/allocators/hma_template.h"
 #include "rmw_hazcat/allocators/cpu_ringbuf_allocator.h"
 #include "rmw_hazcat/allocators/cuda_ringbuf_allocator.h"
+
 
 void * convert(void * ptr, size_t size, struct hma_allocator * alloc_src, struct hma_allocator * alloc_dest) {
     if (alloc_src->domain == alloc_dest->domain) {
@@ -104,3 +110,20 @@ struct hma_allocator * remap_shared_allocator(int shmem_id) {
 
     return alloc;
 }
+
+// copy_to, copy_from, and copy shouldn't get called on a CPU allocator, but they've been
+// implemented here for completeness anyways
+void cpu_copy_tofrom(void * there, void * here, size_t size) {
+    memcpy(here, there, size);
+}
+void cpu_copy(void * there, void * here, size_t size, struct hma_allocator * dest_alloc) {
+    dest_alloc->copy_from(there, here, size);
+}
+int cant_allocate_here(void * self, size_t size) {
+    assert(0);
+    return -1;
+}
+
+#ifdef __cplusplus
+}
+#endif

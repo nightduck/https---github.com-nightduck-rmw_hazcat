@@ -31,7 +31,7 @@ uint8_t deref(uint8_t * ptr)
 
 TEST(AllocatorTest, creation_test)
 {
-  struct cpu_ringbuf_allocator * alloc = create_cpu_ringbuf_allocator(69, 6, 30);
+  struct cpu_ringbuf_allocator * alloc = create_cpu_ringbuf_allocator(6, 30);
 
   EXPECT_EQ(alloc->count, 0);
   EXPECT_EQ(alloc->rear_it, 0);

@@ -1,13 +1,17 @@
+#ifndef HMA_ALLOCATOR_H
+#define HMA_ALLOCATOR_H
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/shm.h>
 #include <sys/mman.h>
-
-
-#ifndef HMA_ALLOCATOR_H
-#define HMA_ALLOCATOR_H
 
 
 #define OFFSET_TO_PTR(a, o) (uint8_t *)a + o
@@ -42,14 +46,16 @@ union alloc_type {
     uint32_t raw;
 };
 
-#define ALLOC_STRAT 0x000   // Not for use
-#define ALLOC_RING  0x001
-#define ALLOC_TLSF  0x002
-#define ALLOC_HEAP  0x003
+#define ALLOC_STRAT     0x000   // Not for use
+#define ALLOC_RING      0x001
+#define ALLOC_TLSF      0x002
+#define ALLOC_BEST_FIT  0x003
+#define ALLOC_FIRST_FIT 0x004
+#define ALLOC_HALF_FIT  0x005
 
-#define DEVICE      0x000   // Not for use
-#define CPU         0x001
-#define CUDA        0x002
+#define DEVICE          0x000   // Not for use
+#define CPU             0x001
+#define CUDA            0x002
 
 
 /*
@@ -136,19 +142,12 @@ struct hma_allocator {
 
 void * convert(void * ptr, size_t size, struct hma_allocator * alloc_src, struct hma_allocator * alloc_dest);
 
-int cant_allocate_here(void * self, size_t size) {
-    assert(0);
-    return -1;
-}
 
 // copy_to, copy_from, and copy shouldn't get called on a CPU allocator, but they've been
 // implemented here for completeness anyways
-void cpu_copy_tofrom(void * there, void * here, size_t size) {
-    memcpy(here, there, size);
-}
-void cpu_copy(void * there, void * here, size_t size, struct hma_allocator * dest_alloc) {
-    dest_alloc->copy_from(there, here, size);
-}
+void cpu_copy_tofrom(void * there, void * here, size_t size);
+void cpu_copy(void * there, void * here, size_t size, struct hma_allocator * dest_alloc);
+int cant_allocate_here(void * self, size_t size);
 
 void populate_local_fn_pointers(struct local * alloc, uint32_t alloc_impl);
 
@@ -160,5 +159,8 @@ struct hma_allocator * create_shared_allocator(void * hint, size_t alloc_size, u
 // Do call this
 struct hma_allocator * remap_shared_allocator(int shmem_id);
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif // HMA_ALLOCATOR_H

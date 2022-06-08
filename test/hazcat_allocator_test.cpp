@@ -33,8 +33,18 @@ TEST(AllocatorTest, creation_test)
 {
   struct cpu_ringbuf_allocator * alloc = create_cpu_ringbuf_allocator(6, 30);
 
+  int id = alloc->shmem_id;
+  EXPECT_EQ(alloc->strategy, ALLOC_RING);
+  EXPECT_EQ(alloc->device_type, CPU);
+  EXPECT_EQ(alloc->device_number, 0);
   EXPECT_EQ(alloc->count, 0);
   EXPECT_EQ(alloc->rear_it, 0);
   EXPECT_EQ(alloc->item_size, 6);
   EXPECT_EQ(alloc->ring_size, 30);
+  
+  unmap_shared_allocator((struct hma_allocator *)alloc);
+
+  EXPECT_EQ(shmat(id, NULL, 0), (void *)-1);
+  EXPECT_EQ(errno, EINVAL);
+
 }

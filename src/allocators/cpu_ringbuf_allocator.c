@@ -65,6 +65,31 @@ struct hma_allocator * cpu_ringbuf_remap(struct hma_allocator * temp)
   return fps;
 }
 
+void cpu_ringbuf_unmap(struct hma_allocator * alloc)
+{
+  struct shmid_ds buf;
+  if(shmctl(alloc->shmem_id, IPC_STAT, &buf) == -1) {
+    printf("Destruction failed on fetching segment info\n");
+    //RMW_SET_ERROR_MSG("Error reading info about shared StaticPoolAllocator");
+    //return RMW_RET_ERROR;
+    return;
+  }
+  if(buf.shm_cpid == getpid()) {
+    printf("Marking segment fo removal\n");
+    if(shmctl(alloc->shmem_id, IPC_RMID, NULL) == -1) {
+        printf("Destruction failed on marking segment for removal\n");
+        //RMW_SET_ERROR_MSG("can't mark shared StaticPoolAllocator for deletion");
+        //return RMW_RET_ERROR;
+        return;
+    }
+  }
+  int ret = shmdt(alloc);
+  if(ret) {
+    printf("cpu_ringbuf_unmap, failed to detach\n");
+    handle_error("shmdt");
+  }
+}
+
 #ifdef __cplusplus
 }
 #endif

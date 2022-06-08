@@ -20,8 +20,8 @@ endif()
 find_package(CUDA REQUIRED)
 find_package(ament_cmake REQUIRED)
 
-SET(CUDA_SEPARABLE_COMPILATION ON)
-CUDA_SELECT_NVCC_ARCH_FLAGS(ARCH_FLAGS Auto)
+set(CUDA_SEPARABLE_COMPILATION ON)
+cuda_select_nvcc_arch_flags(ARCH_FLAGS Auto)
 SET(CUDA_NVCC_FLAGS ${ARCH_FLAGS} CACHE STRING "nvcc flags" FORCE)
 
 include_directories(include)
@@ -32,7 +32,7 @@ set(${PROJECT_NAME}_allocator_sources
   src/allocators/hma_template.c
   src/allocators/cpu_ringbuf_allocator.c
   src/allocators/cuda_ringbuf_allocator.c
-  )
+)
 
 add_library(${PROJECT_NAME}_allocators ${${PROJECT_NAME}_allocator_sources})
 target_include_directories(${PROJECT_NAME}_allocators PUBLIC
@@ -50,7 +50,7 @@ ament_export_libraries(${PROJECT_NAME}_allocators)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
-  
+
   # the following line skips the linter which checks for copyrights
   # comment the line when a copyright and license is added to all source files
   set(ament_cmake_copyright_FOUND TRUE)

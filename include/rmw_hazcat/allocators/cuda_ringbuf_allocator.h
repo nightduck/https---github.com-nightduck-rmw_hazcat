@@ -28,25 +28,18 @@ checkDrvError(CUresult res, const char * tok, const char * file, unsigned line)
 #define CHECK_DRV(x) checkDrvError(x, #x, __FILE__, __LINE__);
 
 #if defined(__linux__)
-struct ipcHandle_st
-{
-  int socket;
-  char * socketName;
-};
 typedef int ShareableHandle;
 #elif defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
-struct ipcHandle_st
-{
-  std::vector < HANDLE > hMailslot; // 1 Handle in case of child and `num children` Handles for parent.
-};
 typedef HANDLE ShareableHandle;
 #endif
 
+#define CUDA_RINGBUF_ALLOCATION_SIZE 0x80000000
 
 struct cuda_ringbuf_allocator
 {
   union {
-    struct {
+    struct
+    {
       const int shmem_id;
       const uint16_t strategy : 12;
       const uint16_t device_type : 12;
@@ -75,6 +68,8 @@ void cuda_ringbuf_copy_to(void * there, void * here, size_t size);
 void cuda_ringbuf_copy(void * there, void * here, size_t size, struct hma_allocator * dest_alloc);
 
 struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp);
+
+void cuda_ringbuf_unmap(struct hma_allocator * alloc);
 
 #ifdef __cplusplus
 }

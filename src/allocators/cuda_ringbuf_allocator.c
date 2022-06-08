@@ -39,7 +39,7 @@ struct cuda_ringbuf_allocator * create_cuda_ringbuf_allocator(size_t item_size, 
 
   // Create CUDA allocation and remap self
   CUdeviceptr d_addr;
-  CHECK_DRV(cuMemAddressReserve(&d_addr, 0x80000000, 0, 0, 0ULL));
+  CHECK_DRV(cuMemAddressReserve(&d_addr, CUDA_RINGBUF_ALLOCATION_SIZE, 0, 0, 0ULL));
 
   // cuMemMap (with offset?)
   CHECK_DRV(cuMemMap(d_addr, pool_size, 0, original_handle, 0));
@@ -163,6 +163,34 @@ struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp)
   // fps can now be typecast to cuda_ringbuf_allocator* and work correctly. Updates to any member
   // besides top 40 bytes will be visible across processes
   return cuda_alloc;
+}
+
+void cuda_ringbuf_unmap(struct hma_allocator * alloc)
+{
+  CHECK_DRV(cuMemUnmap((CUdeviceptr)(uintptr_t)alloc, CUDA_RINGBUF_ALLOCATION_SIZE));
+  CHECK_DRV(cuMemAddressFree((CUdeviceptr)(uintptr_t)alloc, CUDA_RINGBUF_ALLOCATION_SIZE));
+  
+  struct shmid_ds buf;
+  if(shmctl(alloc->shmem_id, IPC_STAT, &buf) == -1) {
+    printf("Destruction failed on fetching segment info\n");
+    //RMW_SET_ERROR_MSG("Error reading info about shared StaticPoolAllocator");
+    //return RMW_RET_ERROR;
+    return;
+  }
+  if(buf.shm_cpid == getpid()) {
+    printf("Marking segment fo removal\n");
+    if(shmctl(alloc->shmem_id, IPC_RMID, NULL) == -1) {
+        printf("Destruction failed on marking segment for removal\n");
+        //RMW_SET_ERROR_MSG("can't mark shared StaticPoolAllocator for deletion");
+        //return RMW_RET_ERROR;
+        return;
+    }
+  }
+  int ret = shmdt(alloc);
+  if(ret) {
+    printf("cpu_ringbuf_unmap, failed to detach\n");
+    handle_error("shmdt");
+  }
 }
 
 #ifdef __cplusplus

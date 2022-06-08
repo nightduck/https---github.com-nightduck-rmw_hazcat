@@ -14,7 +14,8 @@ extern "C"
 struct cpu_ringbuf_allocator
 {
   union {
-    struct {
+    struct
+    {
       const int shmem_id;
       const uint16_t strategy : 12;
       const uint16_t device_type : 12;
@@ -36,6 +37,8 @@ int cpu_ringbuf_allocate(void * self, size_t size);
 void cpu_ringbuf_deallocate(void * self, int offset);
 
 struct hma_allocator * cpu_ringbuf_remap(struct hma_allocator * temp);
+
+void cpu_ringbuf_unmap(struct hma_allocator * alloc);
 
 #ifdef __cplusplus
 }

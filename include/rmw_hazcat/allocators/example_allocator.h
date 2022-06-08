@@ -15,7 +15,8 @@ extern "C"
 struct example_allocator
 {
   union {
-    struct {
+    struct
+    {
       const int shmem_id;
       const uint16_t strategy : 12;
       const uint16_t device_type : 12;
@@ -42,6 +43,8 @@ void example_copy_to(void * there, void * here, size_t size);
 void example_copy(void * there, void * here, size_t size, struct hma_allocator * dest_alloc);
 
 struct hma_allocator * example_remap(struct hma_allocator * temp);
+
+void example_unmap(struct hma_allocator * alloc);
 
 #ifdef __cplusplus
 }

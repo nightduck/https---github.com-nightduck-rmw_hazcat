@@ -8,52 +8,61 @@ extern "C"
 #include "rmw_hazcat/allocators/cuda_ringbuf_allocator.h"
 
 int (*allocate_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, size_t) =
-  {
-    cpu_ringbuf_allocate,
-    cuda_ringbuf_allocate
-  };
+{
+  cpu_ringbuf_allocate,
+  cuda_ringbuf_allocate
+};
 
 void (*deallocate_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, int) =
-  {
-    cpu_ringbuf_deallocate,
-    cuda_ringbuf_deallocate
-  };
+{
+  cpu_ringbuf_deallocate,
+  cuda_ringbuf_deallocate
+};
 
 void (*copy_from_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, void *, size_t) =
-  {
-    cpu_copy_tofrom,
-    cuda_ringbuf_copy_from
-  };
+{
+  cpu_copy_tofrom,
+  cuda_ringbuf_copy_from
+};
 
 void (*copy_to_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, void *, size_t) =
-  {
-    cpu_copy_tofrom,
-    cuda_ringbuf_copy_to
-  };
+{
+  cpu_copy_tofrom,
+  cuda_ringbuf_copy_to
+};
 
 void (*copy_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, void *, size_t, struct hma_allocator *) =
-  {
-    cpu_copy,
-    cuda_ringbuf_copy
-  };
+{
+  cpu_copy,
+  cuda_ringbuf_copy
+};
 
 struct hma_allocator * (*remap_fps[NUM_STRATS * NUM_DEV_TYPES])(struct hma_allocator *) =
-  {
-    cpu_ringbuf_remap,
-    cuda_ringbuf_remap
-  };
+{
+  cpu_ringbuf_remap,
+  cuda_ringbuf_remap
+};
 
-int allocate(struct hma_allocator * alloc, size_t size) {
+void (*unmap_fps[NUM_STRATS * NUM_DEV_TYPES])(struct hma_allocator *) =
+{
+  cpu_ringbuf_unmap,
+  cuda_ringbuf_unmap
+};
+
+int allocate(struct hma_allocator * alloc, size_t size)
+{
   int lookup_ind = alloc->strategy * NUM_DEV_TYPES + alloc->device_type;
   return (allocate_fps[lookup_ind])(alloc, size);
 }
 
-void deallocate(struct hma_allocator * alloc, int offset) {
+void deallocate(struct hma_allocator * alloc, int offset)
+{
   int lookup_ind = alloc->strategy * NUM_DEV_TYPES + alloc->device_type;
   return (deallocate_fps[lookup_ind])(alloc, offset);
 }
 
-void copy_from(void * cpu_mem, void * alloc_mem, struct hma_allocator * alloc, size_t size) {
+void copy_from(void * cpu_mem, void * alloc_mem, struct hma_allocator * alloc, size_t size)
+{
   int lookup_ind = alloc->strategy * NUM_DEV_TYPES + alloc->device_type;
   return (copy_from_fps[lookup_ind])(cpu_mem, alloc_mem, size);
 }
@@ -133,6 +142,13 @@ struct hma_allocator * remap_shared_allocator(int shmem_id)
   shmdt(temp);
 
   return alloc;
+}
+
+void unmap_shared_allocator(struct hma_allocator * alloc)
+{
+  // Lookup allocator's unmap function and let it unmap itself and associated memory pool
+  int lookup_ind = alloc->strategy * NUM_DEV_TYPES + alloc->device_type;
+  (unmap_fps[lookup_ind])(alloc);
 }
 
 // copy_to, copy_from, and copy shouldn't get called on a CPU allocator, but they've been

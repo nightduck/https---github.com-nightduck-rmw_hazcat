@@ -12,6 +12,7 @@ extern "C"
 #include <errno.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/shm.h>
 #include <sys/mman.h>
@@ -21,7 +22,7 @@ extern "C"
 #define PTR_TO_OFFSET(a, p) (uint8_t *)p - (uint8_t *)a
 
 #define handle_error(msg) \
-           do { perror(msg); exit(EXIT_FAILURE); } while (0)
+  do { perror(msg); exit(EXIT_FAILURE); } while (0)
 
 #define MAX_POOL_SIZE   0x100000000
 
@@ -69,7 +70,8 @@ union alloc_type {
 /*
   // Copy paste at head of new allocators, so first 8 bytes can be cast as a hma_allocator
   union {
-    struct {
+    struct
+    {
       const int shmem_id;
       const uint16_t strategy : 12;
       const uint16_t device_type : 12;
@@ -125,6 +127,9 @@ struct hma_allocator * create_shared_allocator(
 // TODO: Update documentation
 // Do call this
 struct hma_allocator * remap_shared_allocator(int shmem_id);
+
+// Calls custom code to clean up existing memory pool, then unmaps the allocator itself
+void unmap_shared_allocator(struct hma_allocator * alloc);
 
 #ifdef __cplusplus
 }

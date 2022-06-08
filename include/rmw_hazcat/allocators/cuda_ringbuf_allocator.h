@@ -46,18 +46,11 @@ typedef HANDLE ShareableHandle;
 struct cuda_ringbuf_allocator
 {
   union {
-    struct
-    {
-      // Exist in local memory, pointing to static functions
-      int  (* allocate)   (void *, size_t);
-      void (* deallocate) (void *, int);
-      void (* copy_from)  (void *, void *, size_t);
-      void (* copy_to)    (void *, void *, size_t);
-      void (* copy)       (void *, void *, size_t, struct hma_allocator *);
-
-      // Exist in shared memory
+    struct {
       const int shmem_id;
-      const uint32_t alloc_type;
+      const uint16_t strategy : 12;
+      const uint16_t device_type : 12;
+      const uint8_t device_number;
     };
     struct hma_allocator untyped;
   };
@@ -81,7 +74,7 @@ void cuda_ringbuf_copy_to(void * there, void * here, size_t size);
 
 void cuda_ringbuf_copy(void * there, void * here, size_t size, struct hma_allocator * dest_alloc);
 
-struct hma_allocator * cuda_ringbuf_remap(struct shared * temp);
+struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp);
 
 #ifdef __cplusplus
 }

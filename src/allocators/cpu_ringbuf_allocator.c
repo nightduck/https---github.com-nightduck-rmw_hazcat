@@ -55,20 +55,14 @@ void cpu_ringbuf_deallocate(void * self, int offset)
   s->count = forward_it - s->rear_it;
 }
 
-struct hma_allocator * cpu_ringbuf_remap(struct shared * temp)
+struct hma_allocator * cpu_ringbuf_remap(struct hma_allocator * temp)
 {
-  // Create a local mapping, and populate function pointers so they resolve in this process
-  struct local * fps = (struct local *)mmap(
-    NULL,
-    sizeof(struct local), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS, 0, 0);
-  populate_local_fn_pointers(fps, CPU_RINGBUF_IMPL);
-
   // Map in shared portion of allocator
-  shmat(temp->shmem_id, fps + sizeof(struct local), 0);
+  struct hma_allocator * fps = shmat(temp->shmem_id, NULL, 0);
 
   // fps can now be typecast to cpu_ringbuf_allocator* and work correctly. Updates to any member
   // besides top 40 bytes will be visible across processes
-  return (struct hma_allocator *)fps;
+  return fps;
 }
 
 #ifdef __cplusplus

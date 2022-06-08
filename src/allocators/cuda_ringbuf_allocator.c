@@ -122,13 +122,12 @@ void cuda_ringbuf_copy(void * there, void * here, size_t size, struct hma_alloca
 {
   void * interm = malloc(size);
   cuda_ringbuf_copy_to(interm, here, size);
-  dest_alloc->copy_from(interm, there, size);
+  copy_from(interm, there, dest_alloc, size);
 }
 
-struct hma_allocator * cuda_ringbuf_remap(struct shared * temp)
+struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp)
 {
-  struct cuda_ringbuf_allocator * cuda_alloc =
-    ALLOC_FROM_SHARED(temp, struct cuda_ringbuf_allocator);
+  struct cuda_ringbuf_allocator * cuda_alloc = (struct cuda_ringbuf_allocator *)temp;
   size_t pool_size = cuda_alloc->item_size * cuda_alloc->ring_size;
 
   // TODO: This is breaking on "invalid device ordinal". Something about passing a 0 to
@@ -155,21 +154,15 @@ struct hma_allocator * cuda_ringbuf_remap(struct shared * temp)
   accessDesc.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
   CHECK_DRV(cuMemSetAccess(d_addr, pool_size, &accessDesc, 1));
 
-  // Create a local mapping, and populate function pointers so they resolve in this process
-  struct local * fps = (struct local *)mmap(
-    (void *)(uintptr_t)d_addr,
-    sizeof(struct local), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS, 0, 0);
-  populate_local_fn_pointers(fps, CUDA_RINGBUF_IMPL);
-
   // Map in shared portion of allocator
-  shmat(temp->shmem_id, fps + sizeof(struct local), 0);
+  cuda_alloc = shmat(temp->shmem_id, (void *)(uintptr_t)d_addr, 0);
 
   // Free handle. Memory will stay valid as long as it is mapped
   CHECK_DRV(cuMemRelease(handle));
 
   // fps can now be typecast to cuda_ringbuf_allocator* and work correctly. Updates to any member
   // besides top 40 bytes will be visible across processes
-  return (struct hma_allocator *)fps;
+  return cuda_alloc;
 }
 
 #ifdef __cplusplus

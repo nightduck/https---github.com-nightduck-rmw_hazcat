@@ -6,7 +6,10 @@ extern "C"
 {
 #endif
 
+#define _GNU_SOURCE
+
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -17,7 +20,8 @@ extern "C"
 #define OFFSET_TO_PTR(a, o) (uint8_t *)a + o
 #define PTR_TO_OFFSET(a, p) (uint8_t *)p - (uint8_t *)a
 
-#define ALLOC_FROM_SHARED(s, type)    (type *)((uint8_t *)s - sizeof(struct local))
+#define handle_error(msg) \
+           do { perror(msg); exit(EXIT_FAILURE); } while (0)
 
 #define MAX_POOL_SIZE   0x100000000
 
@@ -48,52 +52,37 @@ union alloc_type {
   uint32_t raw;
 };
 
-#define ALLOC_STRAT     0x000   // Not for use
-#define ALLOC_RING      0x001
-#define ALLOC_TLSF      0x002
-#define ALLOC_BEST_FIT  0x003
-#define ALLOC_FIRST_FIT 0x004
-#define ALLOC_HALF_FIT  0x005
+#define ALLOC_RING      0x000
+#define ALLOC_TLSF      0x001
+#define ALLOC_BEST_FIT  0x002
+#define ALLOC_FIRST_FIT 0x003
+#define ALLOC_HALF_FIT  0x004
+#define ALLOC_STRAT     0x005   // Not for use, indicates max
+#define NUM_STRATS      0x1
 
-#define DEVICE          0x000   // Not for use
-#define CPU             0x001
-#define CUDA            0x002
+#define CPU             0x000
+#define CUDA            0x001
+#define DEVICE          0x002   // Not for use, indicates max
+#define NUM_DEV_TYPES   0x2
 
 
 /*
-  // Copy paste at head of new allocators, so first 56 bytes can be cast as a hma_allocator
+  // Copy paste at head of new allocators, so first 8 bytes can be cast as a hma_allocator
   union {
     struct {
-      // Exist in local memory, pointing to static functions
-      int  (* allocate)   (void *, size_t);
-      void (* deallocate) (void *, int);
-      void (* copy_from)  (void *, void *, size_t);
-      void (* copy_to)    (void *, void *, size_t);
-      void (* copy)       (void *, void *, size_t, struct hma_allocator *);
-
-      // Exist in shared memory
       const int shmem_id;
-      const uint32_t alloc_type;
+      const uint16_t strategy : 12;
+      const uint16_t device_type : 12;
+      const uint8_t device_number;
     };
-    hma_allocator untyped;
+    struct hma_allocator untyped;
   };
-
 */
 
-
-struct local
-{
-  int  (* allocate)   (void *, size_t);
-  void (* deallocate) (void *, int);
-  void (* copy_from)  (void *, void *, size_t);
-  void (* copy_to)    (void *, void *, size_t);
-  void (* copy)       (void *, void *, size_t, struct hma_allocator *);
-};
-
-struct shared
+struct hma_allocator
 {
   int shmem_id;
-  struct          // 32bit int indicating type of allocator and memory domain
+  union              // 32bit int indicating type of allocator and memory domain
   {
     struct
     {
@@ -111,60 +100,21 @@ struct shared
   };
 };
 
-struct hma_allocator
-{
-  // Exist in local memory, pointing to static functions
-  union {
-    struct local local;
-    struct
-    {
-      int  (* allocate)   (void *, size_t);
-      void (* deallocate) (void *, int);
-      void (* copy_from)  (void *, void *, size_t);
-      void (* copy_to)    (void *, void *, size_t);
-      void (* copy)       (void *, void *, size_t, struct hma_allocator *);
-    };
-  };
+// Wrapper to lookup and call appropriate allocate function for provided allocator
+int allocate(struct hma_allocator * alloc, size_t size);
 
-  // Exist in shared memory
-  union {
-    struct shared shared;
-    struct
-    {
-      int shmem_id;
-      struct              // 32bit int indicating type of allocator and memory domain
-      {
-        struct
-        {
-          uint16_t strategy : 12;
-          union {
-            uint16_t device_type : 12;
-            uint32_t domain : 20;
-          };
-        };
-        struct
-        {
-          uint32_t alloc_impl : 24;
-          uint8_t device_number;
-        };
-      };
-    };
-  };
-
-};
+// Wrapper to lookup and call appropriate deallocate function for provided allocator
+void deallocate(struct hma_allocator * alloc, int offset);
 
 void * convert(
   void * ptr, size_t size, struct hma_allocator * alloc_src,
   struct hma_allocator * alloc_dest);
-
 
 // copy_to, copy_from, and copy shouldn't get called on a CPU allocator, but they've been
 // implemented here for completeness anyways
 void cpu_copy_tofrom(void * there, void * here, size_t size);
 void cpu_copy(void * there, void * here, size_t size, struct hma_allocator * dest_alloc);
 int cant_allocate_here(void * self, size_t size);
-
-void populate_local_fn_pointers(struct local * alloc, uint32_t alloc_impl);
 
 // TODO: Update documentation
 // Don't call this outside this library

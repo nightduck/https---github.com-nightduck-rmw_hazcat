@@ -3,7 +3,7 @@ extern "C"
 {
 #endif
 
-#include "rmw_hazcat/allocators/example_allcoator.h"
+#include "rmw_hazcat/allocators/example_allocator.h"
 
 struct example_allocator * create_example_allocator(size_t item_size, size_t ring_size)
 {
@@ -51,15 +51,10 @@ void example_copy(void * there, void * here, size_t size, struct hma_allocator *
   // TODO: Implement method to copy to non-cpu memory from self
 }
 
-struct hma_allocator * example_remap(struct shared * temp)
+struct hma_allocator * example_remap(struct hma_allocator * temp)
 {
-  // TODO: Optional, cast the shared portion of the allocator to your allocator type to read from.
-  //       it. Be careful not to reference any of the function pointers, as this will dereference
-  //       unmapped memory.
-  struct example_allocator * alloc = ALLOC_FROM_SHARED(temp, struct example_allocator);
-  //  alloc->allocate(alloc, 40);   // BAD
-  //  int x = alloc->shmem_id;      // Fine
-  //  *alloc = ...;                 // BAD, dereferences unmapped memory
+  // TODO: Optional, cast the allocator to your allocator type to read from it
+  struct example_allocator * alloc = temp;
 
   // TODO: Find address you want your allocator to start at. Might be determined by the memory
   //       granularity of the device it is managing. Shouldn't overlap with temp
@@ -67,20 +62,14 @@ struct hma_allocator * example_remap(struct shared * temp)
 
   // TODO: Maybe reserve an address space if your device API requires it
 
-  // Create a local mapping, and populate function pointers so they resolve in this process
-  struct local * fps = (struct local *)mmap(
-    hint,
-    sizeof(struct  local), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS, 0, 0);
-  populate_local_fn_pointers(fps, EXAMPLE_IMPL);
-
   // Map in shared portion of allocator
-  shmat(temp->shmem_id, fps + sizeof(struct local), 0);
+  alloc = shmat(temp->shmem_id, hint, 0);
 
   // TODO: Map in memory pool on device memory
 
   // fps can now be typecast to example_allocator* and work correctly. Updates to any member
   // besides top 40 bytes will be visible across processes
-  return (struct hma_allocator *)fps;
+  return alloc;
 }
 
 #ifdef __cplusplus

@@ -3,10 +3,60 @@ extern "C"
 {
 #endif
 
-//#include "rmw_hazcat/allocators/hma_template.h"
+#include "rmw_hazcat/allocators/hma_template.h"
 #include "rmw_hazcat/allocators/cpu_ringbuf_allocator.h"
 #include "rmw_hazcat/allocators/cuda_ringbuf_allocator.h"
 
+int (*allocate_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, size_t) =
+  {
+    cpu_ringbuf_allocate,
+    cuda_ringbuf_allocate
+  };
+
+void (*deallocate_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, int) =
+  {
+    cpu_ringbuf_deallocate,
+    cuda_ringbuf_deallocate
+  };
+
+void (*copy_from_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, void *, size_t) =
+  {
+    cpu_copy_tofrom,
+    cuda_ringbuf_copy_from
+  };
+
+void (*copy_to_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, void *, size_t) =
+  {
+    cpu_copy_tofrom,
+    cuda_ringbuf_copy_to
+  };
+
+void (*copy_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, void *, size_t, struct hma_allocator *) =
+  {
+    cpu_copy,
+    cuda_ringbuf_copy
+  };
+
+struct hma_allocator * (*remap_fps[NUM_STRATS * NUM_DEV_TYPES])(struct hma_allocator *) =
+  {
+    cpu_ringbuf_remap,
+    cuda_ringbuf_remap
+  };
+
+int allocate(struct hma_allocator * alloc, size_t size) {
+  int lookup_ind = alloc->strategy * NUM_DEV_TYPES + alloc->device_type;
+  return (allocate_fps[lookup_ind])(alloc, size);
+}
+
+void deallocate(struct hma_allocator * alloc, int offset) {
+  int lookup_ind = alloc->strategy * NUM_DEV_TYPES + alloc->device_type;
+  return (deallocate_fps[lookup_ind])(alloc, offset);
+}
+
+void copy_from(void * cpu_mem, void * alloc_mem, struct hma_allocator * alloc, size_t size) {
+  int lookup_ind = alloc->strategy * NUM_DEV_TYPES + alloc->device_type;
+  return (copy_from_fps[lookup_ind])(cpu_mem, alloc_mem, size);
+}
 
 void * convert(
   void * ptr, size_t size, struct hma_allocator * alloc_src,
@@ -17,41 +67,19 @@ void * convert(
     return ptr;
   } else {
     // Allocate space on the destination allocator
-    void * here = OFFSET_TO_PTR(alloc_dest, alloc_dest->allocate(alloc_dest, size));
+    void * here = OFFSET_TO_PTR(alloc_dest, allocate(alloc_dest, size));
     assert(here > alloc_dest);
 
+    int lookup_ind = alloc_dest->strategy * NUM_DEV_TYPES + alloc_dest->device_type;
+
     if (alloc_src->domain == CPU) {
-      alloc_dest->copy_from(here, ptr, size);
+      (copy_from_fps[lookup_ind])(here, ptr, size);
     } else if (alloc_dest->domain == CPU) {
-      alloc_src->copy_to(here, ptr, size);
+      (copy_to_fps[lookup_ind])(here, ptr, size);
     } else {
-      alloc_src->copy(here, ptr, size, alloc_dest);
+      (copy_fps[lookup_ind])(here, ptr, size, alloc_dest);
     }
     return here;
-  }
-}
-
-void populate_local_fn_pointers(struct local * alloc, uint32_t alloc_impl)
-{
-  switch (alloc_impl) {
-    case CPU_RINGBUF_IMPL:
-      alloc->allocate = cpu_ringbuf_allocate;
-      alloc->deallocate = cpu_ringbuf_deallocate;
-      alloc->copy_from = cpu_copy_tofrom;
-      alloc->copy_to = cpu_copy_tofrom;
-      alloc->copy = cpu_copy;
-      break;
-    case CUDA_RINGBUF_IMPL:
-      alloc->allocate = cuda_ringbuf_allocate;
-      alloc->deallocate = cuda_ringbuf_deallocate;
-      alloc->copy_from = cuda_ringbuf_copy_from;
-      alloc->copy_to = cuda_ringbuf_copy_to;
-      alloc->copy = cuda_ringbuf_copy;
-      break;
-    default:
-      // TODO: Cleaner error handling
-      assert(0);
-      break;
   }
 }
 
@@ -63,15 +91,8 @@ struct hma_allocator * create_shared_allocator(
 {
   uint32_t alloc_impl = strategy << 12 | device_type;
 
-  // Construct local portion of allocator
-  struct local * fps = (struct local *)mmap(
-    hint,
-    sizeof(struct local), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS, 0, 0);
-  populate_local_fn_pointers(fps, alloc_impl);
-
-  printf("Mounted local portion of alloc at: %xp\n", fps);
   // Create shared memory block (requested size )
-  int id = shmget(IPC_PRIVATE, alloc_size - sizeof(struct local), 0640);
+  int id = shmget(IPC_PRIVATE, alloc_size, 0640);
   if (id == -1) {
     // TODO: More robust error checking
     return NULL;
@@ -80,7 +101,11 @@ struct hma_allocator * create_shared_allocator(
   printf("Allocator id: %d\n", id);
 
   // Construct shared portion of allocator
-  struct shared * alloc = (struct shared *)shmat(id, hint + sizeof(struct local), 0);
+  struct hma_allocator * alloc = (struct hma_allocator *)shmat(id, hint, 0);
+  if (alloc == MAP_FAILED) {
+    printf("create_shared_allocator failed on creation of shared portion\n");
+    handle_error("shmat");
+  }
   alloc->shmem_id = id;
   alloc->alloc_impl = alloc_impl;
   alloc->device_number = device_number;
@@ -90,7 +115,7 @@ struct hma_allocator * create_shared_allocator(
   // TODO: shmctl to set permissions and such
 
   // Give back base allocator, straddling local and shared memory mappings
-  return (struct hma_allocator *)fps;
+  return alloc;
 }
 
 // TODO: Update documentation
@@ -98,23 +123,14 @@ struct hma_allocator * create_shared_allocator(
 struct hma_allocator * remap_shared_allocator(int shmem_id)
 {
   // Temporarily map in shared allocator to read it's alloc_type
-  struct shared * shared = (struct shared *)shmat(shmem_id, NULL, 0);
+  struct hma_allocator * temp = (struct hma_allocator *)shmat(shmem_id, NULL, 0);
 
-  struct hma_allocator * alloc;
-  switch (shared->alloc_impl) {
-    case CPU_RINGBUF_IMPL:
-      alloc = cpu_ringbuf_remap(shared);
-      break;
-
-    default:
-      break;
-  }
-
-  // TODO: Switch case calling remap function for each alloc type, which map in pool, remap
-  //       allocator, populate function pointers, and return pointer to new location
+  // Lookup allocator's remap function and let it bootstrap itself and any memory pool
+  int lookup_ind = temp->strategy * NUM_DEV_TYPES + temp->device_type;
+  struct hma_allocator * alloc = (remap_fps[lookup_ind])(temp);
 
   // Unmap temp mapping, and return pointer from switch case block
-  shmdt(shared);
+  shmdt(temp);
 
   return alloc;
 }
@@ -127,7 +143,8 @@ void cpu_copy_tofrom(void * there, void * here, size_t size)
 }
 void cpu_copy(void * there, void * here, size_t size, struct hma_allocator * dest_alloc)
 {
-  dest_alloc->copy_from(there, here, size);
+  int lookup_ind = dest_alloc->strategy * NUM_DEV_TYPES + dest_alloc->device_type;
+  copy_from(here, there,dest_alloc,  size);
 }
 int cant_allocate_here(void * self, size_t size)
 {

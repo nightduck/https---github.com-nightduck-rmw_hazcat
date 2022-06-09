@@ -36,11 +36,11 @@ int example_allocate(void * self, size_t size);
 
 void example_deallocate(void * self, int offset);
 
-void example_copy_from(void * there, void * here, size_t size);
+void example_copy_from(void * here, void * there, size_t size);
 
-void example_copy_to(void * there, void * here, size_t size);
+void example_copy_to(void * here, void * there, size_t size);
 
-void example_copy(void * there, void * here, size_t size, struct hma_allocator * dest_alloc);
+void example_copy(struct hma_allocator * dest_alloc, void * there, void * here, size_t size);
 
 struct hma_allocator * example_remap(struct hma_allocator * temp);
 

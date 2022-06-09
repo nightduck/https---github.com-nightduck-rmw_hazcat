@@ -4,6 +4,21 @@ extern "C"
 #endif
 
 #include "rmw_hazcat/allocators/cuda_ringbuf_allocator.h"
+#include <cuda_runtime_api.h>
+#include <cuda.h>
+
+static inline void
+checkDrvError(CUresult res, const char * tok, const char * file, unsigned line)
+{
+  if (res != CUDA_SUCCESS) {
+    const char * errStr = NULL;
+    (void)cuGetErrorString(res, &errStr);
+    printf("%s:%d %sfailed (%d): %s\n", file, line, tok, (unsigned)res, errStr);
+    abort();
+  }
+}
+
+#define CHECK_DRV(x) checkDrvError(x, #x, __FILE__, __LINE__);
 
 struct cuda_ringbuf_allocator * create_cuda_ringbuf_allocator(size_t item_size, size_t ring_size)
 {
@@ -108,21 +123,21 @@ void cuda_ringbuf_deallocate(void * self, int offset)
   s->count = forward_it - s->rear_it;
 }
 
-void cuda_ringbuf_copy_from(void * there, void * here, size_t size)
+void cuda_ringbuf_copy_from(void * here, void * there, size_t size)
 {
-  cudaMemcpy(there, here, size, cudaMemcpyHostToDevice);
+  cudaMemcpy(there, here, size, cudaMemcpyDeviceToHost);
 }
 
-void cuda_ringbuf_copy_to(void * there, void * here, size_t size)
+void cuda_ringbuf_copy_to(void * here, void * there, size_t size)
 {
-  cudaMemcpy(here, there, size, cudaMemcpyDeviceToHost);
+  cudaMemcpy(here, there, size, cudaMemcpyHostToDevice);
 }
 
-void cuda_ringbuf_copy(void * there, void * here, size_t size, struct hma_allocator * dest_alloc)
+void cuda_ringbuf_copy(struct hma_allocator * dest_alloc, void * there, void * here, size_t size)
 {
   void * interm = malloc(size);
-  cuda_ringbuf_copy_to(interm, here, size);
-  copy_from(interm, there, dest_alloc, size);
+  cuda_ringbuf_copy_from(here, interm, size);
+  COPY_TO(dest_alloc, there, interm, size);
 }
 
 struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp)

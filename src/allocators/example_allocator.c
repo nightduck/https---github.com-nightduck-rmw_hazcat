@@ -36,19 +36,22 @@ void example_deallocate(void * self, int offset)
   // TODO: Implement deallocation method
 }
 
-void example_copy_from(void * there, void * here, size_t size)
+void example_copy_from(void * here, void * there, size_t size)
 {
-  // TODO: Implement method to copy from main memory into self
+  // TODO: Implement method to copy from self into main memory
+  //       For CPU allocators, leave unimplemented and use cpu_copy_from
 }
 
-void example_copy_to(void * there, void * here, size_t size)
+void example_copy_to(void * here, void * there, size_t size)
 {
-  // TODO: Implement method to copy to main memory from self
+  // TODO: Implement method to copy to self from main memory
+  //       For CPU allocators, leave unimplemented and use cpu_copy_to
 }
 
-void example_copy(void * there, void * here, size_t size, struct hma_allocator * dest_alloc)
+void example_copy(struct hma_allocator * dest_alloc, void * there, void * here, size_t size)
 {
-  // TODO: Implement method to copy to non-cpu memory from self
+  // TODO: Implement method to copy to other allocator from self
+  //       For CPU allocators, leave unimplemented and use cpu_copy
 }
 
 struct hma_allocator * example_remap(struct hma_allocator * temp)

@@ -9,23 +9,7 @@ extern "C"
 #define CUDA_RINGBUF_IMPL    CUDA << 12 | ALLOC_RING
 
 #include "hma_template.h"
-#include <cuda_runtime_api.h>
-#include <cuda.h>
 #include <stdio.h>
-
-
-static inline void
-checkDrvError(CUresult res, const char * tok, const char * file, unsigned line)
-{
-  if (res != CUDA_SUCCESS) {
-    const char * errStr = NULL;
-    (void)cuGetErrorString(res, &errStr);
-    printf("%s:%d %sfailed (%d): %s\n", file, line, tok, (unsigned)res, errStr);
-    abort();
-  }
-}
-
-#define CHECK_DRV(x) checkDrvError(x, #x, __FILE__, __LINE__);
 
 #if defined(__linux__)
 typedef int ShareableHandle;
@@ -61,11 +45,11 @@ int cuda_ringbuf_allocate(void * self, size_t size);
 
 void cuda_ringbuf_deallocate(void * self, int offset);
 
-void cuda_ringbuf_copy_from(void * there, void * here, size_t size);
+void cuda_ringbuf_copy_from(void * here, void * there, size_t size);
 
-void cuda_ringbuf_copy_to(void * there, void * here, size_t size);
+void cuda_ringbuf_copy_to(void * here, void * there, size_t size);
 
-void cuda_ringbuf_copy(void * there, void * here, size_t size, struct hma_allocator * dest_alloc);
+void cuda_ringbuf_copy(struct hma_allocator * dest_alloc, void * there, void * here, size_t size);
 
 struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp);
 

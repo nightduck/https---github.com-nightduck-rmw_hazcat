@@ -70,7 +70,7 @@ struct cuda_ringbuf_allocator * create_cuda_ringbuf_allocator(size_t item_size, 
   CHECK_DRV(cuMemRelease(original_handle));
 
   struct cuda_ringbuf_allocator * alloc = (struct cuda_ringbuf_allocator *)create_shared_allocator(
-    (void *)(uintptr_t)d_addr, sizeof(struct cuda_ringbuf_allocator), CUDA, ALLOC_RING, 0);
+    (void *)(uintptr_t)d_addr, sizeof(struct cuda_ringbuf_allocator), ALLOC_RING, CUDA, 0);
 
   // TODO: Construct strategy
   alloc->count = 0;
@@ -93,7 +93,7 @@ int cuda_ringbuf_allocate(void * self, size_t size)
     int forward_it = (s->rear_it + s->count) % s->ring_size;
 
     // Give address relative to shared object
-    int ret = PTR_TO_OFFSET(s, sizeof(struct cuda_ringbuf_allocator) + s->item_size * forward_it);
+    int ret = sizeof(struct cuda_ringbuf_allocator) + s->item_size * forward_it;
 
     // Update count of how many elements in pool
     s->count++;
@@ -159,7 +159,7 @@ struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp)
   CUdeviceptr d_addr;
   CHECK_DRV(cuMemAddressReserve(&d_addr, 0x80000000, 0, 0, 0ULL));
 
-  // cuMemMap (with offset?)
+  // cuMemMap (with offset?)struct cpu_ringbuf_allocator * 
   CHECK_DRV(cuMemMap(d_addr, pool_size, 0, handle, 0));
 
   // cuMemSetAccess
@@ -181,10 +181,7 @@ struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp)
 }
 
 void cuda_ringbuf_unmap(struct hma_allocator * alloc)
-{
-  CHECK_DRV(cuMemUnmap((CUdeviceptr)(uintptr_t)alloc, CUDA_RINGBUF_ALLOCATION_SIZE));
-  CHECK_DRV(cuMemAddressFree((CUdeviceptr)(uintptr_t)alloc, CUDA_RINGBUF_ALLOCATION_SIZE));
-  
+{  
   struct shmid_ds buf;
   if(shmctl(alloc->shmem_id, IPC_STAT, &buf) == -1) {
     printf("Destruction failed on fetching segment info\n");
@@ -206,6 +203,9 @@ void cuda_ringbuf_unmap(struct hma_allocator * alloc)
     printf("cpu_ringbuf_unmap, failed to detach\n");
     handle_error("shmdt");
   }
+
+  CHECK_DRV(cuMemUnmap((CUdeviceptr)(uintptr_t)alloc, CUDA_RINGBUF_ALLOCATION_SIZE));
+  CHECK_DRV(cuMemAddressFree((CUdeviceptr)(uintptr_t)alloc, CUDA_RINGBUF_ALLOCATION_SIZE));
 }
 
 #ifdef __cplusplus

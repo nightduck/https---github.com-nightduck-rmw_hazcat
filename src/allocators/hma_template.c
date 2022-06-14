@@ -4,6 +4,50 @@ extern "C"
 #endif
 
 #include "rmw_hazcat/allocators/hma_template.h"
+#include "rmw_hazcat/allocators/cpu_ringbuf_allocator.h"
+#include "rmw_hazcat/allocators/cuda_ringbuf_allocator.h"
+
+int (*allocate_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, size_t) =
+{
+  cpu_ringbuf_allocate,
+  cuda_ringbuf_allocate
+};
+
+void (*deallocate_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, int) =
+{
+  cpu_ringbuf_deallocate,
+  cuda_ringbuf_deallocate
+};
+
+void (*copy_from_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, void *, size_t) =
+{
+  cpu_copy_from,
+  cuda_ringbuf_copy_from
+};
+
+void (*copy_to_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, void *, size_t) =
+{
+  cpu_copy_to,
+  cuda_ringbuf_copy_to
+};
+
+void (*copy_fps[NUM_STRATS * NUM_DEV_TYPES])(struct hma_allocator *, void *, void *, size_t) =
+{
+  cpu_copy,
+  cuda_ringbuf_copy
+};
+
+struct hma_allocator * (*remap_fps[NUM_STRATS * NUM_DEV_TYPES])(struct hma_allocator *) =
+{
+  cpu_ringbuf_remap,
+  cuda_ringbuf_remap
+};
+
+void (*unmap_fps[NUM_STRATS * NUM_DEV_TYPES])(struct hma_allocator *) =
+{
+  cpu_ringbuf_unmap,
+  cuda_ringbuf_unmap
+};
 
 void * convert(
   void * ptr, size_t size, struct hma_allocator * alloc_src,
@@ -14,7 +58,7 @@ void * convert(
     return ptr;
   } else {
     // Allocate space on the destination allocator
-    void * here = OFFSET_TO_PTR(alloc_dest, allocate(alloc_dest, size));
+    void * here = OFFSET_TO_PTR(alloc_dest, ALLOCATE(alloc_dest, size));
     assert(here > alloc_dest);
 
     int lookup_ind = alloc_dest->strategy * NUM_DEV_TYPES + alloc_dest->device_type;
@@ -36,8 +80,6 @@ struct hma_allocator * create_shared_allocator(
   void * hint, size_t alloc_size, uint16_t strategy,
   uint16_t device_type, uint8_t device_number)
 {
-  uint32_t alloc_impl = strategy << 12 | device_type;
-
   // Create shared memory block (requested size )
   int id = shmget(IPC_PRIVATE, alloc_size, 0640);
   if (id == -1) {
@@ -48,13 +90,15 @@ struct hma_allocator * create_shared_allocator(
   printf("Allocator id: %d\n", id);
 
   // Construct shared portion of allocator
-  struct hma_allocator * alloc = (struct hma_allocator *)shmat(id, hint, 0);
+  int remap = (hint == NULL) ? 0 : SHM_REMAP;
+  struct hma_allocator * alloc = (struct hma_allocator *)shmat(id, hint, remap);
   if (alloc == MAP_FAILED) {
     printf("create_shared_allocator failed on creation of shared portion\n");
     handle_error("shmat");
   }
   alloc->shmem_id = id;
-  alloc->alloc_impl = alloc_impl;
+  alloc->strategy = strategy;
+  alloc->device_type = device_type;
   alloc->device_number = device_number;
 
   printf("Mounted shared portion of alloc at: %xp\n", alloc);

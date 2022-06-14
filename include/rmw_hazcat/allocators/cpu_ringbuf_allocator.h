@@ -17,9 +17,9 @@ struct cpu_ringbuf_allocator
     struct
     {
       const int shmem_id;
-      const uint16_t strategy : 12;
-      const uint16_t device_type : 12;
-      const uint8_t device_number;
+      const uint16_t device_type;
+      const uint16_t device_number;
+      const uint16_t strategy;
     };
     struct hma_allocator untyped;
   };

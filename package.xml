@@ -3,12 +3,23 @@
 <package format="3">
   <name>rmw_hazcat</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="oren.bell@wustl.edu">ros</maintainer>
-  <license>TODO: License declaration</license>
+  <description>rmw implementation for Hazcat, a zero copy framework for heterogenous memory</description>
+  <maintainer email="oren.bell@wustl.edu">Oren Bell</maintainer>
+  <license>Apache License 2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <depend>rcpputils</depend>
+  <depend>rcutils</depend>
+  <depend>rmw</depend>
+  <depend>rmw_implementation</depend>
+  <depend>rosidl_runtime_c</depend>
+  <depend>rosidl_runtime_cpp</depend>
+  <depend>rosidl_typesupport_cpp</depend>
+  <depend>rosidl_typesupport_introspection_c</depend>
+  <depend>rosidl_typesupport_introspection_cpp</depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
   <test_depend>test_msgs</test_depend>

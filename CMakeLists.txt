@@ -19,6 +19,10 @@ endif()
 # find dependencies
 find_package(CUDA REQUIRED)
 find_package(ament_cmake REQUIRED)
+find_package(rcutils REQUIRED)
+find_package(rmw REQUIRED)
+find_package(rosidl_runtime_c REQUIRED)
+find_package(rosidl_typesupport_introspection_c REQUIRED)
 
 set(CUDA_SEPARABLE_COMPILATION ON)
 cuda_select_nvcc_arch_flags(ARCH_FLAGS Auto)
@@ -28,25 +32,56 @@ include_directories(include)
 
 include_directories(${CUDA_INCLUDE_DIRS})
 
-set(${PROJECT_NAME}_allocator_sources
+set(rmw_hazcat_allocator_sources
   src/allocators/hma_template.c
   src/allocators/cpu_ringbuf_allocator.c
   src/allocators/cuda_ringbuf_allocator.c
 )
 
-add_library(${PROJECT_NAME}_allocators ${${PROJECT_NAME}_allocator_sources})
-target_include_directories(${PROJECT_NAME}_allocators PUBLIC
+set(rmw_hazcat_sources
+  src/rmw_compare_guids_equal.c
+  src/rmw_count.c
+  src/rmw_get_implementation_identifier.c
+  src/rmw_get_serialization_format.c
+  src/rmw_init.c
+  src/rmw_node.c
+  src/rmw_publisher.c
+  src/rmw_serialize.c
+  src/rmw_subscription.c
+  src/rmw_wait.c
+)
+
+add_library(rmw_hazcat_allocators ${rmw_hazcat_allocator_sources})
+target_include_directories(rmw_hazcat_allocators PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<INSTALL_INTERFACE:include>")
 
+add_library(rmw_hazcat SHARED ${rmw_hazcat_sources})
+ament_target_dependencies(rmw_hazcat
+  "rcutils"
+  "rmw"
+)
+target_include_directories(
+  rmw_hazcat
+  PUBLIC include
+)
+target_link_libraries(rmw_hazcat
+  rmw_hazcat_allocators
+)
+
+register_rmw_implementation(
+  "c:rosidl_typesupport_c:rosidl_typesupport_introspection_c"
+)
+configure_rmw_library(rmw_hazcat)
+
 install(
-  TARGETS ${PROJECT_NAME}_allocators EXPORT ${PROJECT_NAME}
+  TARGETS rmw_hazcat_allocators rmw_hazcat EXPORT rmw_hazcat
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin)
 
 ament_export_include_directories(include)
-ament_export_libraries(${PROJECT_NAME}_allocators)
+ament_export_libraries(rmw_hazcat_allocators)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -58,9 +93,10 @@ if(BUILD_TESTING)
   find_package(std_msgs REQUIRED)
 
   ament_add_gtest(allocator_test test/hazcat_allocator_test.cpp)
-  target_link_libraries(allocator_test ${PROJECT_NAME}_allocators cuda)
+  target_link_libraries(allocator_test rmw_hazcat_allocators cuda)
   ament_target_dependencies(allocator_test
-    CUDA test_msgs std_msgs
+    CUDA test_msgs std_msgs 
+    rcutils
   )
 endif()
 

@@ -39,33 +39,6 @@ extern "C"
 
 #define MAX_POOL_SIZE   0x100000000
 
-// alloc_type is 32bit value.
-// First 12 bits encode allocator strategy
-// Next 12 bits encode device type
-// Last 8 bits encode device number. Only used for multiple GPUs, etc. Must be zero for CPU
-//
-// First 24 bits collectively encode the needed allocator implementation.
-// The last 20 bits collectively encode the memory "domain"
-//
-// Example definition:  alloc_type x = (alloc_type)(ALLOC_TLSF << 20 | CUDA << 8 | 3);
-
-union alloc_type {
-  struct
-  {
-    uint16_t strategy : 12;
-    union {
-      uint16_t device_type : 12;
-      uint32_t domain : 20;
-    };
-  };
-  struct
-  {
-    uint32_t alloc_impl : 24;
-    uint8_t device_number;
-  };
-  uint32_t raw;
-};
-
 #define ALLOC_RING      0x000
 #define ALLOC_TLSF      0x001
 #define ALLOC_BEST_FIT  0x002

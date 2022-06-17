@@ -32,10 +32,14 @@ include_directories(include)
 
 include_directories(${CUDA_INCLUDE_DIRS})
 
-set(rmw_hazcat_allocator_sources
+set(hazcat_allocator_sources
   src/allocators/hma_template.c
   src/allocators/cpu_ringbuf_allocator.c
   src/allocators/cuda_ringbuf_allocator.c
+)
+
+set(hazcat_message_queue_sources
+  src/hazcat_message_queue.c
 )
 
 set(rmw_hazcat_sources
@@ -51,10 +55,18 @@ set(rmw_hazcat_sources
   src/rmw_wait.c
 )
 
-add_library(rmw_hazcat_allocators ${rmw_hazcat_allocator_sources})
-target_include_directories(rmw_hazcat_allocators PUBLIC
+add_library(hazcat_allocators ${hazcat_allocator_sources})
+target_include_directories(hazcat_allocators PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<INSTALL_INTERFACE:include>")
+
+add_library(hazcat_message_queue ${hazcat_message_queue_sources})
+target_include_directories(hazcat_message_queue PUBLIC
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  "$<INSTALL_INTERFACE:include>")
+  ament_target_dependencies(hazcat_message_queue
+    "rmw"
+  )
 
 add_library(rmw_hazcat SHARED ${rmw_hazcat_sources})
 ament_target_dependencies(rmw_hazcat
@@ -66,7 +78,8 @@ target_include_directories(
   PUBLIC include
 )
 target_link_libraries(rmw_hazcat
-  rmw_hazcat_allocators
+  hazcat_allocators
+  hazcat_message_queue
 )
 
 register_rmw_implementation(
@@ -75,13 +88,12 @@ register_rmw_implementation(
 configure_rmw_library(rmw_hazcat)
 
 install(
-  TARGETS rmw_hazcat_allocators rmw_hazcat EXPORT rmw_hazcat
+  TARGETS hazcat_allocators hazcat_message_queue rmw_hazcat EXPORT rmw_hazcat
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin)
 
 ament_export_include_directories(include)
-ament_export_libraries(rmw_hazcat_allocators)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -93,7 +105,7 @@ if(BUILD_TESTING)
   find_package(std_msgs REQUIRED)
 
   ament_add_gtest(allocator_test test/hazcat_allocator_test.cpp)
-  target_link_libraries(allocator_test rmw_hazcat_allocators cuda)
+  target_link_libraries(allocator_test hazcat_allocators cuda)
   ament_target_dependencies(allocator_test
     CUDA test_msgs std_msgs 
     rcutils

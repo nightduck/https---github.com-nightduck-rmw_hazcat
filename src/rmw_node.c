@@ -23,11 +23,15 @@ rmw_node_t *
 rmw_create_node(
   rmw_context_t * context,
   const char * name,
-  const char * namespace_)
+  const char * namespace_,
+  size_t domain_id,
+  bool localhost_only)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, NULL);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(name, NULL);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(namespace_, NULL);
+  (void)domain_id;
+  (void)localhost_only;
 
   RMW_SET_ERROR_MSG("rmw_create_node hasn't been implemented yet");
   return NULL;

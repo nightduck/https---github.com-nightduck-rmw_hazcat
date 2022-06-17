@@ -23,6 +23,7 @@ extern "C"
 
 #include <stdatomic.h>
 #include <stdint.h>
+#include "rmw/allocators.h"
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
 
@@ -45,45 +46,61 @@ typedef struct entry {
 } entry_t;
 
 typedef struct message_queue {
-    int len;
-    int num_domains;
+    size_t len;
+    size_t num_domains;
 
+    // Domain IDs (device_type and device_number from allocator) for with each column in queue
     uint32_t domains[DOMAINS_PER_TOPIC];
 
-    // Array of size len
-    ref_bits_t * metadata;
+    // Track interested pubs and subs
+    uint16_t pub_count;
+    uint16_t sub_count;
 
-    // 2D array of dimensions [num_domains, len]
-    entry_t * entries;
+    // After structure is an array of ref_bits_t objects numbering len
+    // Following that there is an array of entry_t objects, one for each domain, each of size len
 } message_queue_t;
+
+// Little wrapper to store these references in linked list
+typedef struct message_queue_node {
+    struct message_queue_node * next;
+    const char * topic_name;
+    int fd;
+    message_queue_t * elem;
+} mq_node_t;
+
+typedef struct pub_sub_data {
+    uint32_t domain;
+    uint8_t array_num;
+    mq_node_t * mq;  
+} pub_sub_data_t;
 
 void lock_domain(atomic_uint_fast16_t * lock, int bit_mask) {
     atomic_uint_fast16_t val = *lock;
     while(!atomic_compare_exchange_weak(lock, &val, bit_mask & val));
 }
 
-bool
+rmw_ret_t
 hazcat_register_publisher(rmw_publisher_t * pub, rmw_qos_profile_t * qos);
 
-bool
+rmw_ret_t
 hazcat_register_subscription(rmw_subscription_t * sub, rmw_qos_profile_t * qos);
 
 void *
 hazcat_borrow(rmw_publisher_t * pub, size_t len);
 
-bool
+rmw_ret_t
 hazcat_publish(rmw_publisher_t * pub, void * msg);
 
 void *
 hazcat_take(rmw_subscription_t * sub);
 
-bool
+rmw_ret_t
 hazcat_return(rmw_subscription_t * sub, void * msg);
 
-bool
+rmw_ret_t
 hazcat_unregister_publisher(rmw_publisher_t * pub);
 
-bool
+rmw_ret_t
 hazcat_unregister_subscription(rmw_subscription_t * sub);
 
 #ifdef __cplusplus

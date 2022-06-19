@@ -63,7 +63,7 @@ typedef struct message_queue {
 // Little wrapper to store these references in linked list
 typedef struct message_queue_node {
     struct message_queue_node * next;
-    const char * topic_name;
+    const char * file_name;
     int fd;
     message_queue_t * elem;
 } mq_node_t;

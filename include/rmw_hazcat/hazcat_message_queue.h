@@ -27,6 +27,8 @@ extern "C"
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
 
+#include "rmw_hazcat/allocators/hma_template.h"
+
 #define DOMAINS_PER_TOPIC   16
 
 typedef struct reference_bits {
@@ -46,6 +48,7 @@ typedef struct entry {
 } entry_t;
 
 typedef struct message_queue {
+    atomic_int index;
     size_t len;
     size_t num_domains;
 
@@ -69,14 +72,28 @@ typedef struct message_queue_node {
 } mq_node_t;
 
 typedef struct pub_sub_data {
-    uint32_t domain;
+    hma_allocator_t * alloc;
+    mq_node_t * mq;
     uint8_t array_num;
-    mq_node_t * mq;  
 } pub_sub_data_t;
 
-void lock_domain(atomic_uint_fast16_t * lock, int bit_mask) {
+inline void lock_domain(atomic_uint_fast16_t * lock, int bit_mask) {
     atomic_uint_fast16_t val = *lock;
     while(!atomic_compare_exchange_weak(lock, &val, bit_mask & val));
+}
+
+inline ref_bits_t * get_ref_bits(message_queue_t * mq, int i) {
+    return (uint8_t*)mq 
+        + sizeof(message_queue_t)
+        + i * sizeof(ref_bits_t);
+}
+
+inline entry_t * get_entry(message_queue_t * mq, int domain, int i) {
+    return (uint8_t*)mq 
+        + sizeof(message_queue_t)
+        + mq->len * sizeof(ref_bits_t)
+        + domain * mq->len * sizeof(entry_t)
+        + i * sizeof(entry_t);
 }
 
 rmw_ret_t

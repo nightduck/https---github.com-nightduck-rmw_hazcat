@@ -66,7 +66,7 @@ extern "C"
   };
 */
 
-struct hma_allocator
+typedef struct hma_allocator
 {
   int shmem_id;
   union {   // Only allocators in same domain (same device) can use each other's memory
@@ -77,7 +77,7 @@ struct hma_allocator
     uint32_t domain;
   };
   uint16_t strategy;
-};
+} hma_allocator_t;
 
 void * convert(
   void * ptr, size_t size, struct hma_allocator * alloc_src,

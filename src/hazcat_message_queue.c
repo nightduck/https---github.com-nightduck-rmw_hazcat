@@ -30,6 +30,8 @@ const int dir_offset = 21;
 
 mq_node_t mq_list = {NULL, NULL, -1, NULL};
 
+// TODO: Hash table of mapped allocators
+
 // Convenient utility method since 95% of registering subscription is same as registering publisher
 rmw_ret_t
 hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name, rmw_qos_profile_t * qos)
@@ -76,9 +78,14 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name, rmw_q
                 return RMW_RET_ERROR;
             }
 
+            mq->index = 0;
             mq->len = qos->depth;
             mq->num_domains = 1;
-            mq->domains[0] = data->domain;
+            mq->domains[0] = CPU;     // Domain 0 should always be main memory
+            if (data->alloc->domain != CPU) {
+                mq->num_domains++;
+                mq->domains[1] = data->alloc->domain;
+            }
             mq->pub_count = 0;  // One of these will be incremented after function returns
             mq->sub_count = 0;
         } else {
@@ -113,7 +120,7 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name, rmw_q
 
     int i;
     for(i = 0; i < DOMAINS_PER_TOPIC; i++) {
-        if (data->domain == mq->domains[i]) {
+        if (data->alloc->domain == mq->domains[i]) {
             break;
         }
     }
@@ -124,7 +131,7 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name, rmw_q
             return RMW_RET_ERROR;
         }
 
-        mq->domains[mq->num_domains] = data->domain;
+        mq->domains[mq->num_domains] = data->alloc->domain;
         mq->num_domains++;
         needs_resize = true;
     }
@@ -210,15 +217,40 @@ hazcat_register_subscription(rmw_subscription_t * sub, rmw_qos_profile_t * qos) 
 
 void *
 hazcat_borrow(rmw_publisher_t * pub, size_t len) {
-    // TODO: This doesn't interface with message queue at all. It allocates a message from the pub's
-    //       allocator, stores the pointer -> shmemid and offset mapping, and returns the pointer
+    // This doesn't interface with message queue at all. It allocates a message from the pub's
+    // allocator, computes a pointer, and returns that
+    hma_allocator_t * alloc = ((pub_sub_data_t*)pub->data)->alloc;
+    int offset = ALLOCATE(alloc, len);
+    return OFFSET_TO_PTR(alloc, offset);
 }
 
 rmw_ret_t
 hazcat_publish(rmw_publisher_t * pub, void * msg) {
-    // TODO: Lookup allocator and offset from pointer
+    hma_allocator_t * alloc = ((pub_sub_data_t*)pub->data)->alloc;
+    message_queue_t * mq = ((pub_sub_data_t*)pub->data)->mq;
     
-    // TODO: Store offset in message queue
+    // Increment index atomically and use result as our entry
+    // TODO: Fancy compare and swap so mq->index doesn't increment into infinity and wrap around
+    int i = mq->index++;
+    i %= mq->len;
+
+    // Get reference bits and entry to edit
+    ref_bits_t * ref_bits = get_ref_bits(mq, i);
+    entry_t * entry = get_entry(mq, ((pub_sub_data_t*)pub->data)->array_num, i);
+
+    // Lock entire row
+    lock_domain(&ref_bits->lock, 0xFF);
+
+    // Store token in appropriate array, converting message pointer to expected offset value
+    entry->alloc_shmem_id = alloc->shmem_id;
+    entry->offset = PTR_TO_OFFSET(alloc, msg);
+
+    // Unlock row
+    ref_bits->lock = 0;
+
+    // TODO: Add some assertions up in here, check for null pointers and all
+
+    return RMW_RET_OK;
 }
 
 rmw_ret_t

@@ -224,26 +224,38 @@ hazcat_borrow(rmw_publisher_t * pub, size_t len) {
     return OFFSET_TO_PTR(alloc, offset);
 }
 
+// TODO: Read locks on message queue
 rmw_ret_t
 hazcat_publish(rmw_publisher_t * pub, void * msg) {
     hma_allocator_t * alloc = ((pub_sub_data_t*)pub->data)->alloc;
     message_queue_t * mq = ((pub_sub_data_t*)pub->data)->mq;
+    int domain_col = ((pub_sub_data_t*)pub->data)->array_num;
     
     // Increment index atomically and use result as our entry
     // TODO: Fancy compare and swap so mq->index doesn't increment into infinity and wrap around
-    int i = mq->index++;
+    int i = atomic_fetch_add(&(mq->index), 1);
     i %= mq->len;
 
     // Get reference bits and entry to edit
     ref_bits_t * ref_bits = get_ref_bits(mq, i);
-    entry_t * entry = get_entry(mq, ((pub_sub_data_t*)pub->data)->array_num, i);
+    entry_t * entry = get_entry(mq, domain_col, i);
 
     // Lock entire row
     lock_domain(&ref_bits->lock, 0xFF);
 
+    if (ref_bits->interest_count > 0) {
+        ref_bits->lock = 0;
+        RMW_SET_ERROR_MSG("Can't publish message. Message queue is full");
+        return RMW_RET_ERROR;
+    }
+
     // Store token in appropriate array, converting message pointer to expected offset value
     entry->alloc_shmem_id = alloc->shmem_id;
     entry->offset = PTR_TO_OFFSET(alloc, msg);
+
+    // Update reference bits
+    ref_bits->availability = 1 << domain_col;
+    ref_bits->interest_count = mq->sub_count;
 
     // Unlock row
     ref_bits->lock = 0;
@@ -251,6 +263,62 @@ hazcat_publish(rmw_publisher_t * pub, void * msg) {
     // TODO: Add some assertions up in here, check for null pointers and all
 
     return RMW_RET_OK;
+}
+
+// TODO: Read locks on message queue
+void *
+hazcat_take(rmw_subscription_t * sub) {
+    hma_allocator_t * alloc = ((pub_sub_data_t*)sub->data)->alloc;
+    message_queue_t * mq = ((pub_sub_data_t*)sub->data)->mq;
+
+    // TODO: There might be a race condition here, implement file read locks
+    // Find oldest message relevant to this subscriber
+    int i = ((pub_sub_data_t*)sub->data)->next_index;
+    int history = ((sub_opts_t*)sub->options.rmw_specific_subscription_payload)->qos_history;
+    if ((mq->index + mq->len - i) % mq->len < history) {
+        // Subscriber is so OOTL, we gotta drop some messages
+        i = (mq->index + mq->len - history) % mq->len;
+
+        // TODO: Update interest_count of messages skipped over
+    }
+
+    // Get message
+    ref_bits_t * ref_bits = get_ref_bits(mq, i);
+    entry_t * entry = get_entry(mq, alloc->domain, i);
+
+    // Update for next take
+    ((pub_sub_data_t*)sub->data)->next_index = (i + 1) % mq->len;
+
+    // TODO: Lookup src allocator with hashtable mapping shm id to mem address
+    hma_allocator_t * src_alloc;
+
+    // Zero-copy magic. Copy here, or don't. Either way, return result
+    void * msg = OFFSET_TO_PTR(src_alloc, entry->offset);
+    return convert(msg, entry->len, src_alloc, alloc);
+}
+
+// TODO: Read locks on message queue
+rmw_ret_t
+hazcat_return(rmw_subscription_t * sub, void * msg) {
+    hma_allocator_t * alloc = ((pub_sub_data_t*)sub->data)->alloc;
+    message_queue_t * mq = ((pub_sub_data_t*)sub->data)->mq;
+
+    // Find index of message being returned (going to be one less than sub's next index)
+    int i = ((pub_sub_data_t*)sub->data)->next_index - 1;
+    if (i < 0) {
+        i = mq->len - 1;
+    }
+    entry_t * entry = get_entry(mq, alloc->domain, i);
+    while(RCUTILS_UNLIKELY(OFFSET_TO_PTR(alloc, entry->offset) != msg)) {
+        i--;
+        if (i < 0) {
+            i = mq->len - 1;
+        }
+        entry = get_entry(mq, alloc->domain, i);
+    }
+
+    ref_bits_t * ref_bits = get_ref_bits(mq, i);
+    ref_bits->interest_count--;
 }
 
 rmw_ret_t

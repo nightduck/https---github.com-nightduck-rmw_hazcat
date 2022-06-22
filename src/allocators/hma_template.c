@@ -63,30 +63,31 @@ void (*unmap_fps[NUM_STRATS * NUM_DEV_TYPES])(struct hma_allocator *) =
   cuda_ringbuf_unmap
 };
 
-void * convert(
-  void * ptr, size_t size, struct hma_allocator * alloc_src,
-  struct hma_allocator * alloc_dest)
-{
-  if (alloc_src->domain == alloc_dest->domain) {
-    // Zero copy condition
-    return ptr;
-  } else {
-    // Allocate space on the destination allocator
-    void * here = OFFSET_TO_PTR(alloc_dest, ALLOCATE(alloc_dest, size));
-    assert(here > alloc_dest);
+// void * convert(
+//   void * ptr, size_t size, struct hma_allocator * alloc_src,
+//   struct hma_allocator * alloc_dest)
+// {
+//   if (alloc_src->domain == alloc_dest->domain) {
+//     // Zero copy condition
+//     return ptr;
+//   } else {
+//     // Allocate space on the destination allocator
+//     void * here = OFFSET_TO_PTR(alloc_dest, ALLOCATE(alloc_dest, size));
+//     assert(here > alloc_dest);
 
-    int lookup_ind = alloc_dest->strategy * NUM_DEV_TYPES + alloc_dest->device_type;
+//     int lookup_ind = alloc_dest->strategy * NUM_DEV_TYPES + alloc_dest->device_type;
 
-    if (alloc_src->domain == CPU) {
-      (copy_from_fps[lookup_ind])(here, ptr, size);
-    } else if (alloc_dest->domain == CPU) {
-      (copy_to_fps[lookup_ind])(here, ptr, size);
-    } else {
-      (copy_fps[lookup_ind])(here, ptr, size, alloc_dest);
-    }
-    return here;
-  }
-}
+//     if (alloc_src->domain == CPU) {
+//       (copy_from_fps[lookup_ind])(here, ptr, size);
+//     } else if (alloc_dest->domain == CPU) {
+//       (copy_to_fps[lookup_ind])(here, ptr, size);
+//     } else {
+//       (copy_fps[lookup_ind])(here, ptr, size, alloc_dest);
+//     }
+//     SHARE(alloc_src, here); // Increment reference counter
+//     return here;
+//   }
+// }
 
 // TODO: Update documentation
 // Don't call this outside this library

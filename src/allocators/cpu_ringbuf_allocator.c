@@ -17,12 +17,13 @@ extern "C"
 {
 #endif
 
+#include <stdatomic.h>
 #include "rmw_hazcat/allocators/cpu_ringbuf_allocator.h"
 
 struct cpu_ringbuf_allocator * create_cpu_ringbuf_allocator(size_t item_size, size_t ring_size)
 {
   struct cpu_ringbuf_allocator * alloc = (struct cpu_ringbuf_allocator *)create_shared_allocator(
-    NULL, sizeof(struct cpu_ringbuf_allocator) + item_size * ring_size, ALLOC_RING, CPU, 0);
+    NULL, sizeof(struct cpu_ringbuf_allocator) + (item_size + sizeof(uint32_t)) * ring_size, ALLOC_RING, CPU, 0);
 
   alloc->count = 0;
   alloc->rear_it = 0;
@@ -41,13 +42,22 @@ int cpu_ringbuf_allocate(void * self, size_t size)
   }
   int forward_it = (s->rear_it + s->count) % s->ring_size;
 
-  // Give address relative to shared object
-  int ret = sizeof(struct cpu_ringbuf_allocator) + s->item_size * forward_it;
+  // Give address relative to allocator, taking into account the 4 bytes in front for reference counter
+  int ret = sizeof(struct cpu_ringbuf_allocator) + sizeof(atomic_uint) + (s->item_size + sizeof(atomic_uint)) * forward_it;
+
+  // Set reference counter to 1
+  atomic_uint * ref_count = ret - 1;
+  atomic_store(ref_count, 1);
 
   // Update count of how many elements in pool
   s->count++;
 
   return ret;
+}
+
+void cpu_ringbuf_share(void * self, int offset) {
+  atomic_uint * ref_count = (uint8_t*)self + offset - 1;
+  atomic_fetch_add(ref_count, 1);
 }
 
 void cpu_ringbuf_deallocate(void * self, int offset)
@@ -56,6 +66,13 @@ void cpu_ringbuf_deallocate(void * self, int offset)
   if (s->count == 0) {
     return;       // Allocator empty, nothing to deallocate
   }
+
+  // Decrement reference counter and only go through with deallocate if it's zero
+  atomic_uint * ref_count = (uint8_t*)self + offset - 1;
+  if(atomic_fetch_add(ref_count, -1) > 0) {
+    return;
+  }
+
   int entry = (offset - sizeof(struct cpu_ringbuf_allocator)) / s->item_size;
 
   // Do math with imaginary overflow indices so forward_it >= entry >= rear_it

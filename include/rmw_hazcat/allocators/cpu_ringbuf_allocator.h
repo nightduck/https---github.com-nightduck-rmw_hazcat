@@ -48,6 +48,8 @@ struct cpu_ringbuf_allocator * create_cpu_ringbuf_allocator(size_t item_size, si
 
 int cpu_ringbuf_allocate(void * self, size_t size);
 
+void cpu_ringbuf_share(void * self, int offset);
+
 void cpu_ringbuf_deallocate(void * self, int offset);
 
 struct hma_allocator * cpu_ringbuf_remap(struct hma_allocator * temp);

@@ -27,6 +27,12 @@ int (*allocate_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, size_t) =
   cuda_ringbuf_allocate
 };
 
+void (*share_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, int) =
+{
+  cpu_ringbuf_share,
+  cuda_ringbuf_share
+};
+
 void (*deallocate_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, int) =
 {
   cpu_ringbuf_deallocate,

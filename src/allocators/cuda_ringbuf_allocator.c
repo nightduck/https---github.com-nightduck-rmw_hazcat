@@ -17,6 +17,7 @@ extern "C"
 {
 #endif
 
+#include <stdatomic.h>
 #include "rmw_hazcat/allocators/cuda_ringbuf_allocator.h"
 #include <cuda_runtime_api.h>
 #include <cuda.h>
@@ -84,7 +85,9 @@ struct cuda_ringbuf_allocator * create_cuda_ringbuf_allocator(size_t item_size, 
   CHECK_DRV(cuMemRelease(original_handle));
 
   struct cuda_ringbuf_allocator * alloc = (struct cuda_ringbuf_allocator *)create_shared_allocator(
-    (void *)(uintptr_t)d_addr, sizeof(struct cuda_ringbuf_allocator), ALLOC_RING, CUDA, 0);
+    (void *)(uintptr_t)d_addr,
+    sizeof(struct cuda_ringbuf_allocator) + sizeof(atomic_uint) * ring_size,
+    ALLOC_RING, CUDA, 0);
 
   // TODO: Construct strategy
   alloc->count = 0;
@@ -106,8 +109,14 @@ int cuda_ringbuf_allocate(void * self, size_t size)
   } else {
     int forward_it = (s->rear_it + s->count) % s->ring_size;
 
+    // Set the reference counter to be 1
+    atomic_uint * ref_count = (uint8_t*)self + sizeof(struct cuda_ringbuf_allocator);
+    ref_count[forward_it] = 1;
+
+    // TODO: Redo this to consider page alignment and the array of reference pointers in CPU memory
     // Give address relative to shared object
-    int ret = sizeof(struct cuda_ringbuf_allocator) + s->item_size * forward_it;
+    int ret = sizeof(struct cuda_ringbuf_allocator) + s->ring_size * sizeof(atomic_uint) +
+      s->item_size * forward_it;
 
     // Update count of how many elements in pool
     s->count++;
@@ -118,14 +127,32 @@ int cuda_ringbuf_allocate(void * self, size_t size)
   return 12345;
 }
 
+void cuda_ringbuf_share(void * self, int offset) {
+  struct cuda_ringbuf_allocator * s = (struct cuda_ringbuf_allocator *)self;
+
+  // TODO: Redo this to consider page alignment
+  int index = (offset - sizeof(struct cuda_ringbuf_allocator) - s->ring_size * sizeof(atomic_uint))
+    / s->item_size;
+  atomic_uint * ref_count = (uint8_t*)self + sizeof(struct cuda_ringbuf_allocator);
+  ref_count[index] = 1;
+}
+
 void cuda_ringbuf_deallocate(void * self, int offset)
 {
   struct cuda_ringbuf_allocator * s = (struct cuda_ringbuf_allocator *)self;
   if (s->count == 0) {
     return;       // Allocator empty, nothing to deallocate
   }
+
+  // TODO: Redo this to consider page alignment
   int entry = (offset - sizeof(struct cuda_ringbuf_allocator)) / s->item_size;
 
+  // Decrement reference counter and only go through with deallocate if it's zero
+  atomic_uint * ref_count = (uint8_t*)self + sizeof(struct cuda_ringbuf_allocator);
+  if (--ref_count[entry] > 0) {
+    return;
+  }
+  
   // Do math with imaginary overflow indices so forward_it >= entry >= rear_it
   int forward_it = s->rear_it + s->count;
   if (__glibc_unlikely(entry < s->rear_it)) {

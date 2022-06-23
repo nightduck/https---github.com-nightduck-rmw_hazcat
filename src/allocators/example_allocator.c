@@ -38,15 +38,23 @@ int example_allocate(void * self, size_t size)
 {
   struct example_allocator * s = (struct example_allocator *)self;
 
-  // TODO: Implement allocation method
+  // TODO: Implement allocation method. Create internal reference counter for the allocation,
+  //       (such as the 4 bytes before it), and set it to one.
 
   return 12345;
+}
+
+void example_share(void * self, int offset) {
+  // TODO: Increment reference counter associated with allocation at offset.
+  //       If the provided offset was not created by previous allocation, you can either return an
+  //       error, or perform undefined behaviour, since that is an improper use of this method
 }
 
 void example_deallocate(void * self, int offset)
 {
   struct example_allocator * s = (struct example_allocator *)self;
 
+  // TODO: Decrement reference counter associated with offset
   // TODO: Implement deallocation method
 }
 

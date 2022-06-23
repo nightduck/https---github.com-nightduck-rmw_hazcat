@@ -360,7 +360,7 @@ hazcat_take(rmw_subscription_t *sub)
     }
     else if (alloc->domain == CPU)
     {
-      // Copy from condition src_alloc
+      // Copy from condition on src_alloc
       COPY_FROM(src_alloc, msg, here, entry->len);
     }
     else
@@ -376,7 +376,7 @@ hazcat_take(rmw_subscription_t *sub)
   // We're the last interested subscriber. Free message queue's references to all message copies
   // May deallocate if no other subscribers hold references to them
   ref_bits->interest_count--;
-  // TODO: Make inerest_count atomic
+  // TODO: Make interest_count atomic
   // if (atomic_fetch_add(ref_bits->interest_count, -1) == 0)
   if (ref_bits->interest_count == 0)
   {

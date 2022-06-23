@@ -48,6 +48,8 @@ struct example_allocator * create_example_allocator(size_t item_size, size_t rin
 
 int example_allocate(void * self, size_t size);
 
+void example_share(void * self, int offset);
+
 void example_deallocate(void * self, int offset);
 
 void example_copy_from(void * here, void * there, size_t size);

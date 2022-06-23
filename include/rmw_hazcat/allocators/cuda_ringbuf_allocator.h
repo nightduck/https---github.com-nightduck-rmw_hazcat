@@ -57,6 +57,8 @@ struct cuda_ringbuf_allocator * create_cuda_ringbuf_allocator(size_t item_size, 
 
 int cuda_ringbuf_allocate(void * self, size_t size);
 
+void cuda_ringbuf_share(void * self, int offset);
+
 void cuda_ringbuf_deallocate(void * self, int offset);
 
 void cuda_ringbuf_copy_from(void * here, void * there, size_t size);

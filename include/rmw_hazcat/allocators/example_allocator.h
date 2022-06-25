@@ -24,6 +24,10 @@ extern "C"
 
 #include "hma_template.h"
 
+// TODO: Specify allocation granularity for managed device. Memory pool will be aligned with
+//       with multiple of this values
+#define DEVICE_MEMPOOL_GRANULARITY     _SC_PAGE_SIZE
+
 // TODO: Ctrl+H to replace all "EXAMPLE" and "example" with the name of your allocator
 
 struct example_allocator
@@ -31,10 +35,11 @@ struct example_allocator
   union {
     struct
     {
+      fps_t fps;
       const int shmem_id;
-      const uint16_t strategy : 12;
-      const uint16_t device_type : 12;
-      const uint8_t device_number;
+      const uint16_t device_type;
+      const uint16_t device_number;
+      const uint16_t strategy;
     };
     struct hma_allocator untyped;
   };

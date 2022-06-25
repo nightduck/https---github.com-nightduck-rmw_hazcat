@@ -23,7 +23,7 @@ extern "C"
 struct cpu_ringbuf_allocator * create_cpu_ringbuf_allocator(size_t item_size, size_t ring_size)
 {
   struct cpu_ringbuf_allocator * alloc = (struct cpu_ringbuf_allocator *)create_shared_allocator(
-    NULL, sizeof(struct cpu_ringbuf_allocator) + (item_size + sizeof(uint32_t)) * ring_size, ALLOC_RING, CPU, 0);
+    NULL, sizeof(struct cpu_ringbuf_allocator) + (item_size + sizeof(uint32_t)) * ring_size, 0, ALLOC_RING, CPU, 0);
 
   alloc->count = 0;
   alloc->rear_it = 0;

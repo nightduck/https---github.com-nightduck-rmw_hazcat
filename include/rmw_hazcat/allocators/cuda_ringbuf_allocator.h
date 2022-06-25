@@ -33,11 +33,12 @@ typedef HANDLE ShareableHandle;
 
 #define CUDA_RINGBUF_ALLOCATION_SIZE 0x80000000
 
-struct cuda_ringbuf_allocator
+typedef struct cuda_ringbuf_allocator
 {
   union {
     struct
     {
+      const fps_t fps;
       const int shmem_id;
       const uint16_t device_type;
       const uint16_t device_number;
@@ -51,9 +52,9 @@ struct cuda_ringbuf_allocator
   int item_size;
   int ring_size;
   ShareableHandle ipc_handle;
-};
+} cuda_ringbuf_allocator_t;
 
-struct cuda_ringbuf_allocator * create_cuda_ringbuf_allocator(size_t item_size, size_t ring_size);
+cuda_ringbuf_allocator_t * create_cuda_ringbuf_allocator(size_t item_size, size_t ring_size);
 
 int cuda_ringbuf_allocate(void * self, size_t size);
 

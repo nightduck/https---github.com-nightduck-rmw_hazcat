@@ -95,12 +95,60 @@ void (*unmap_fps[NUM_STRATS * NUM_DEV_TYPES])(struct hma_allocator *) =
 //   }
 // }
 
+void populate_local_fn_pointers(hma_allocator_t * alloc, uint32_t alloc_impl)
+{
+  switch (alloc_impl) {
+    case CPU_RINGBUF_IMPL:
+      alloc->allocate = cpu_ringbuf_allocate;
+      alloc->deallocate = cpu_ringbuf_deallocate;
+      alloc->copy_from = cpu_copy_from;
+      alloc->copy_to = cpu_copy_to;
+      alloc->copy = cpu_copy;
+      break;
+    case CUDA_RINGBUF_IMPL:
+      alloc->allocate = cuda_ringbuf_allocate;
+      alloc->deallocate = cuda_ringbuf_deallocate;
+      alloc->copy_from = cuda_ringbuf_copy_from;
+      alloc->copy_to = cuda_ringbuf_copy_to;
+      alloc->copy = cuda_ringbuf_copy;
+      break;
+    default:
+      // TODO: Cleaner error handling
+      assert(0);
+      break;
+  }
+}
+
 // TODO: Update documentation
-// Don't call this outside this library
+// Hint must be sizeof(fps_t) bytes before a page boundary, and positioned such that shared portion
+// of allocator and memory pool align according to their granularity requirements. If these
+// conditions are not met, they will be corrected and hint will not match the returned pointer.
+// If pool_size is non-zero, it'll be rounded up to a multiple of device_granularity
 struct hma_allocator * create_shared_allocator(
-  void * hint, size_t alloc_size, uint16_t strategy,
+  void * hint, size_t alloc_size, size_t dev_granularity, uint16_t strategy,
   uint16_t device_type, uint8_t device_number)
 {
+  // Calculate shared memory mapping
+  size_t shared_portion_sz = alloc_size - sizeof(fps_t);
+  shared_portion_sz += SHARED_GRANULARITY - shared_portion_sz % SHARED_GRANULARITY;
+
+  // Round up granularity of pool (must be non-zero)
+  dev_granularity += (SHARED_GRANULARITY - dev_granularity) % SHARED_GRANULARITY;
+
+  size_t lcm_val = lcm(dev_granularity, SHARED_GRANULARITY);
+
+  // Adjust hint so shared and device memory mappings align according to system requirements
+  uint8_t * dev_pool_alignment = (uint8_t*)hint + sizeof(fps_t) + shared_portion_sz;
+  dev_pool_alignment -= (int)dev_pool_alignment % lcm_val;
+  void * mapping_start = dev_pool_alignment - shared_portion_sz - LOCAL_GRANULARITY;
+  hint = dev_pool_alignment - shared_portion_sz - sizeof(fps_t);
+
+  // Make mapping for local portion of allocator (aligned at end of page)
+  struct hma_allocator * alloc = (uint8_t*)mmap(
+    mapping_start, LOCAL_GRANULARITY, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS, 0, 0) +
+    LOCAL_GRANULARITY - sizeof(fps_t);
+  populate_local_fn_pointers(alloc, device_type << 12 | strategy);
+
   // Create shared memory block (requested size )
   int id = shmget(IPC_PRIVATE, alloc_size, 0640);
   if (id == -1) {
@@ -108,21 +156,21 @@ struct hma_allocator * create_shared_allocator(
     return NULL;
   }
 
-  printf("Allocator id: %d\n", id);
+  //printf("Allocator id: %d\n", id);
 
   // Construct shared portion of allocator
-  int remap = (hint == NULL) ? 0 : SHM_REMAP;
-  struct hma_allocator * alloc = (struct hma_allocator *)shmat(id, hint, remap);
-  if (alloc == MAP_FAILED) {
+  if (shmat(id, (uint8_t*)mapping_start + LOCAL_GRANULARITY, 0) == MAP_FAILED) {
     printf("create_shared_allocator failed on creation of shared portion\n");
     handle_error("shmat");
   }
+
+  // Previous pointer should now work in shared partition
   alloc->shmem_id = id;
   alloc->strategy = strategy;
   alloc->device_type = device_type;
   alloc->device_number = device_number;
 
-  printf("Mounted shared portion of alloc at: %xp\n", alloc);
+  //printf("Mounted shared portion of alloc at: %xp\n", alloc);
 
   // TODO: shmctl to set permissions and such
 

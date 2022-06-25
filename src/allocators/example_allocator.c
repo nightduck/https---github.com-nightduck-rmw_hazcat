@@ -25,11 +25,11 @@ struct example_allocator * create_example_allocator(size_t item_size, size_t rin
   //       granularity of the device it is managing. Shouldn't overlap with temp
   void * hint = NULL;
 
-  // TODO: Maybe reserve an address space if your device API requires it
-
   struct example_allocator * alloc = (struct example_allocator *)create_shared_allocator(
     hint, sizeof(struct example_allocator), DEVICE, ALLOC_STRAT, 0);
   // TODO: Change DEVICE and ALLOC_STRAT above
+
+  // TODO: Reserve device memory at end of allocator
 
   // TODO: Construct strategy
 }

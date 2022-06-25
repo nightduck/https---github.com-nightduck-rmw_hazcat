@@ -35,7 +35,7 @@ checkDrvError(CUresult res, const char * tok, const char * file, unsigned line)
 
 #define CHECK_DRV(x) checkDrvError(x, #x, __FILE__, __LINE__);
 
-struct cuda_ringbuf_allocator * create_cuda_ringbuf_allocator(size_t item_size, size_t ring_size)
+cuda_ringbuf_allocator_t * create_cuda_ringbuf_allocator(size_t item_size, size_t ring_size)
 {
   void * hint = NULL;
 
@@ -69,9 +69,14 @@ struct cuda_ringbuf_allocator * create_cuda_ringbuf_allocator(size_t item_size, 
 
   // Create CUDA allocation and remap self
   CUdeviceptr d_addr;
-  CHECK_DRV(cuMemAddressReserve(&d_addr, CUDA_RINGBUF_ALLOCATION_SIZE, 0, 0, 0ULL));
+  size_t allocator_sz = LOCAL_GRANULARITY + SHARED_GRANULARITY;
+  allocator_sz += gran - allocator_sz % gran;   // Reserve some extra for allocator in front
+  CHECK_DRV(cuMemAddressReserve(&d_addr,
+    CUDA_RINGBUF_ALLOCATION_SIZE + allocator_sz,
+    lcm(SHARED_GRANULARITY, gran), 0, 0ULL));
 
-  // cuMemMap (with offset?)
+  // cuMemMap (offset set to allocator_sz when allowed to be non-zero)
+  d_addr += allocator_sz / sizeof(int);
   CHECK_DRV(cuMemMap(d_addr, pool_size, 0, original_handle, 0));
 
   // cuMemSetAccess
@@ -85,11 +90,11 @@ struct cuda_ringbuf_allocator * create_cuda_ringbuf_allocator(size_t item_size, 
   CHECK_DRV(cuMemRelease(original_handle));
 
   struct cuda_ringbuf_allocator * alloc = (struct cuda_ringbuf_allocator *)create_shared_allocator(
-    (void *)(uintptr_t)d_addr,
+    (void *)(uintptr_t)d_addr - SHARED_GRANULARITY - sizeof(fps_t),
     sizeof(struct cuda_ringbuf_allocator) + sizeof(atomic_uint) * ring_size,
-    ALLOC_RING, CUDA, 0);
+    gran, ALLOC_RING, CUDA, 0);
 
-  // TODO: Construct strategy
+  // Construct strategy
   alloc->count = 0;
   alloc->rear_it = 0;
   alloc->item_size = item_size;
@@ -239,14 +244,31 @@ void cuda_ringbuf_unmap(struct hma_allocator * alloc)
         return;
     }
   }
-  int ret = shmdt(alloc);
+  int ret = shmdt((uint8_t*)alloc + sizeof(fps_t));
   if(ret) {
     printf("cpu_ringbuf_unmap, failed to detach\n");
     handle_error("shmdt");
   }
+  if(munmap((uint8_t*)alloc + sizeof(fps_t) - LOCAL_GRANULARITY, LOCAL_GRANULARITY)) {
+    printf("cpu_ringbuf_unmap, failed to remove local portion\n");
+    handle_error("shmdt");
+  }
+  
+  CUmemAllocationProp props = {};
+  props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
+  props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+  props.location.id = 0;
+  props.requestedHandleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
+  size_t gran;
+  CHECK_DRV(cuMemGetAllocationGranularity(&gran, &props, CU_MEM_ALLOC_GRANULARITY_MINIMUM));
 
-  CHECK_DRV(cuMemUnmap((CUdeviceptr)(uintptr_t)alloc, CUDA_RINGBUF_ALLOCATION_SIZE));
-  CHECK_DRV(cuMemAddressFree((CUdeviceptr)(uintptr_t)alloc, CUDA_RINGBUF_ALLOCATION_SIZE));
+  size_t allocator_sz = LOCAL_GRANULARITY + SHARED_GRANULARITY;
+  allocator_sz += gran - allocator_sz % gran;   // Reserve some extra for allocator in front
+
+  CUdeviceptr dev_pool = (CUdeviceptr)(uintptr_t)(DEVICE_ALIGNMENT(alloc, cuda_ringbuf_allocator_t));
+  CUdeviceptr reservation = dev_pool - allocator_sz / sizeof(int);
+  CHECK_DRV(cuMemUnmap(dev_pool, CUDA_RINGBUF_ALLOCATION_SIZE));
+  CHECK_DRV(cuMemAddressFree(reservation, CUDA_RINGBUF_ALLOCATION_SIZE + allocator_sz));
 }
 
 #ifdef __cplusplus

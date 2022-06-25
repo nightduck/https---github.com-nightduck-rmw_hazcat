@@ -30,6 +30,7 @@ extern "C"
 #include <string.h>
 #include <sys/shm.h>
 #include <sys/mman.h>
+#include <unistd.h>
 
 #define OFFSET_TO_PTR(a, o) (uint8_t *)a + o
 #define PTR_TO_OFFSET(a, p) (uint8_t *)p - (uint8_t *)a
@@ -52,11 +53,28 @@ extern "C"
 #define DEVICE          0x002   // Not for use, indicates max
 #define NUM_DEV_TYPES   0x2
 
+#define LOCAL_GRANULARITY   _SC_PAGE_SIZE
+#define SHARED_GRANULARITY  SHMLBA
+
+#define LOCAL_ALIGNMENT(a, t)   (uint8_t*)a - ((uint8_t*)a % LOCAL_GRANULARITY)
+#define SHARED_ALIGNMENT(a, t)  (uint8_t*)a + sizeof(fps_t)
+#define DEVICE_ALIGNMENT(a, t)  (uint8_t*)(((long)a + sizeof(fps_t)) / SHARED_GRANULARITY * SHARED_GRANULARITY + SHARED_GRANULARITY)
+
+typedef struct function_pointers {
+  int  (* allocate)   (void *, size_t);
+  void (* share)      (void *, int);
+  void (* deallocate) (void *, int);
+  void (* copy_from)  (void *, void *, size_t);
+  void (* copy_to)    (void *, void *, size_t);
+  void (* copy)       (void *, void *, size_t, struct hma_allocator *);
+} fps_t;
+
 /*
-  // Copy paste at head of new allocators, so first 8 bytes can be cast as a hma_allocator
+  // Copy paste at head of new allocators, so first 34 bytes can be cast as an hma_allocator
   union {
     struct
     {
+      fps_t fps;
       const int shmem_id;
       const uint16_t device_type;
       const uint16_t device_number;
@@ -68,6 +86,15 @@ extern "C"
 
 typedef struct hma_allocator
 {
+  int  (* allocate)   (void *, size_t);
+  void (* share)      (void *, int);
+  void (* deallocate) (void *, int);
+  void (* copy_from)  (void *, void *, size_t);
+  void (* copy_to)    (void *, void *, size_t);
+  void (* copy)       (void *, void *, size_t, struct hma_allocator *);
+
+  //----Boundary between local memory and shared memory mapping occurs here---
+
   int shmem_id;
   union {   // Only allocators in same domain (same device) can use each other's memory
     struct {
@@ -83,10 +110,22 @@ typedef struct hma_allocator
 //   void * ptr, size_t size, struct hma_allocator * alloc_src,
 //   struct hma_allocator * alloc_dest);
 
+// Calculates LCM of a and b. Used to align allocators in virtual memory
+inline int lcm(int a, int b) {
+  int temp;
+  while (a != 0 && b != 0) {
+    temp = a % b;
+    a = b;
+    b = temp;
+  }
+  int gcd = (a > b) ? a : b;
+  int lcm = (a * b) / gcd;
+}
+
 // TODO: Update documentation
 // Don't call this outside this library
 struct hma_allocator * create_shared_allocator(
-  void * hint, size_t alloc_size, uint16_t strategy,
+  void * hint, size_t alloc_size, size_t dev_granularity, uint16_t strategy,
   uint16_t device_type, uint8_t device_number);
 
 // TODO: Update documentation

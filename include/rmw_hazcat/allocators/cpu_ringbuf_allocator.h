@@ -30,6 +30,7 @@ struct cpu_ringbuf_allocator
   union {
     struct
     {
+      const fps_t fps;
       const int shmem_id;
       const uint16_t device_type;
       const uint16_t device_number;

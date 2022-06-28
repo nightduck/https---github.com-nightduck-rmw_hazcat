@@ -23,7 +23,7 @@ extern "C"
 struct cpu_ringbuf_allocator * create_cpu_ringbuf_allocator(size_t item_size, size_t ring_size)
 {
   struct cpu_ringbuf_allocator * alloc = (struct cpu_ringbuf_allocator *)create_shared_allocator(
-    NULL, sizeof(struct cpu_ringbuf_allocator) + (item_size + sizeof(uint32_t)) * ring_size,
+    NULL, sizeof(struct cpu_ringbuf_allocator) + (item_size + sizeof(atomic_int)) * ring_size,
     1, ALLOC_RING, CPU, 0);
 
   alloc->count = 0;
@@ -98,11 +98,14 @@ void cpu_ringbuf_deallocate(void * self, int offset)
 struct hma_allocator * cpu_ringbuf_remap(struct hma_allocator * temp)
 {
   // Map in shared portion of allocator
-  struct hma_allocator * fps = shmat(temp->shmem_id, NULL, 0);
+  void * shared = shmat(temp->shmem_id, NULL, 0);
+  if (shared == MAP_FAILED) {
+    printf("cpu_ringbuf_remap failed on creation of shared portion\n");
+    handle_error("shmat");
+  }
 
-  // fps can now be typecast to cpu_ringbuf_allocator* and work correctly. Updates to any member
-  // besides top 40 bytes will be visible across processes
-  return fps;
+  // Returned pointer is in unmapped memory
+  return shared - sizeof(fps_t);
 }
 
 void cpu_ringbuf_unmap(struct hma_allocator * alloc)

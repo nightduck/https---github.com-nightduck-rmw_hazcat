@@ -197,4 +197,48 @@ TEST(AllocatorTest, cpu_ringbuf_share_deallocate_test)
 
 TEST(AllocatorTest, cpu_ringbuf_remap_test)
 {
+  struct cpu_ringbuf_allocator * alloc = create_cpu_ringbuf_allocator(8, 3);
+
+  // Make 3 allocations
+  int a1 = ALLOCATE(alloc, 0);
+  int a2 = ALLOCATE(alloc, 0);
+  int a3 = ALLOCATE(alloc, 0);
+
+  // Inspect reference counters which should all be 1
+  long * a1_ptr = GET_PTR(alloc, a1, long);
+  int * a1_ref = (int*)a1_ptr - 1;
+  long * a2_ptr = GET_PTR(alloc, a2, long);
+  int * a2_ref = (int*)a2_ptr - 1;
+  long * a3_ptr = GET_PTR(alloc, a3, long);
+  int * a3_ref = (int*)a3_ptr - 1;
+  EXPECT_EQ(*a1_ref, 1);
+  EXPECT_EQ(*a2_ref, 1);
+  EXPECT_EQ(*a3_ref, 1);
+
+  hma_allocator_t * alloc2 = remap_shared_allocator(alloc->shmem_id);
+
+  EXPECT_NE((void*)alloc, (void*)alloc2);
+
+  // Contents of remapped allocator should be identical (local portion would differ across
+  // processes, but these are in same process)
+  int sz = (sizeof(struct cpu_ringbuf_allocator) + (8 + sizeof(int)) * 3)/sizeof(int);
+  for(int i = 0; i < sz; i++) {
+    EXPECT_EQ(((int*)alloc)[i], ((int*)alloc2)[i]);
+  }
+
+  // Unmap initial allocator
+  unmap_shared_allocator((hma_allocator_t*)alloc);
+
+  // Allocator should still exist and be attachable
+  void * temp = shmat(alloc2->shmem_id, NULL, 0);
+  EXPECT_NE(temp, (void *)-1);
+  EXPECT_EQ(shmdt(temp), 0);
+
+  // Unmap 2nd allocator
+  int id = alloc2->shmem_id;
+  unmap_shared_allocator((hma_allocator_t*)alloc2);
+
+  // Should no longer be able to attach
+  EXPECT_EQ(shmat(id, NULL, 0), (void *)-1);
+  EXPECT_EQ(errno, EINVAL);
 }

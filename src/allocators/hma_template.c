@@ -204,14 +204,28 @@ struct hma_allocator * create_shared_allocator(
 struct hma_allocator * remap_shared_allocator(int shmem_id)
 {
   // Temporarily map in shared allocator to read it's alloc_type
-  struct hma_allocator * temp = (struct hma_allocator *)shmat(shmem_id, NULL, 0);
+  void * shared_portion = shmat(shmem_id, NULL, 0);
+  if (shared_portion == MAP_FAILED) {
+    printf("remap_shared_allocator failed on creation of shared portion\n");
+    handle_error("shmat");
+  }
+  hma_allocator_t * temp = shared_portion - sizeof(fps_t);
 
   // Lookup allocator's remap function and let it bootstrap itself and any memory pool
   int lookup_ind = temp->strategy * NUM_DEV_TYPES + temp->device_type;
   struct hma_allocator * alloc = (remap_fps[lookup_ind])(temp);
 
+  // Map in local portion
+  void * local = mmap((uint8_t*)alloc + sizeof(fps_t) - LOCAL_GRANULARITY, LOCAL_GRANULARITY,
+    PROT_READ | PROT_WRITE, MAP_FIXED_NOREPLACE | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  if (local == MAP_FAILED) {
+    printf("remap_shared_allocator failed on creation of local portion\n");
+    handle_error("mmap");
+  }
+  populate_local_fn_pointers(alloc, temp->device_type << 12 | temp->strategy);
+
   // Unmap temp mapping, and return pointer from switch case block
-  shmdt(temp);
+  shmdt(shared_portion);
 
   return alloc;
 }

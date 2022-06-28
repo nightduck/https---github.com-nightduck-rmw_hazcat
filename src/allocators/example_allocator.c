@@ -17,6 +17,7 @@ extern "C"
 {
 #endif
 
+#include <stdatomic.h>
 #include "rmw_hazcat/allocators/example_allocator.h"
 
 struct example_allocator * create_example_allocator(size_t item_size, size_t ring_size)
@@ -48,6 +49,10 @@ void example_share(void * self, int offset) {
   // TODO: Increment reference counter associated with allocation at offset.
   //       If the provided offset was not created by previous allocation, you can either return an
   //       error, or perform undefined behaviour, since that is an improper use of this method
+
+  // If managing CPU memory, it's recommended to keep the ref counter as a header of the allocation
+  // atomic_int * ref_count = (uint8_t*)self + offset - sizeof(atomic_int);
+  // atomic_fetch_add(ref_count, 1);
 }
 
 void example_deallocate(void * self, int offset)
@@ -78,7 +83,8 @@ void example_copy(struct hma_allocator * dest_alloc, void * there, void * here, 
 
 struct hma_allocator * example_remap(struct hma_allocator * temp)
 {
-  // TODO: Optional, cast the allocator to your allocator type to read from it
+  // TODO: Optional, cast the allocator to your allocator type to read from it. Do not access the
+  //       fps member. All the function pointers are in unmapped memory
   struct example_allocator * alloc = temp;
 
   // TODO: Find address you want your allocator to start at. Might be determined by the memory
@@ -88,12 +94,16 @@ struct hma_allocator * example_remap(struct hma_allocator * temp)
   // TODO: Maybe reserve an address space if your device API requires it
 
   // Map in shared portion of allocator
-  alloc = shmat(temp->shmem_id, hint, 0);
+  alloc = shmat(temp->shmem_id, hint, 0) - sizeof(fps_t);
+  if (alloc == MAP_FAILED) {
+    printf("example_remap failed on creation of shared portion\n");
+    handle_error("shmat");
+  }
 
   // TODO: Map in memory pool on device memory
 
-  // fps can now be typecast to example_allocator* and work correctly. Updates to any member
-  // besides top 40 bytes will be visible across processes
+  // alloc is partially constructed at this point. The local portion will be created and populated
+  // by remap_shared_allocator, which calls this function
   return alloc;
 }
 
@@ -118,7 +128,8 @@ void example_unmap(struct hma_allocator * alloc)
         return;
     }
   }
-  int ret = shmdt(alloc);
+  void * shared_portion = (void*)((uint8_t*)alloc + sizeof(fps_t));
+  int ret = shmdt(shared_portion);
   if(ret) {
     printf("cpu_ringbuf_unmap, failed to detach\n");
     handle_error("shmdt");

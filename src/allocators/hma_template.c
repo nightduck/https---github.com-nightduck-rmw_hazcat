@@ -104,6 +104,7 @@ void populate_local_fn_pointers(hma_allocator_t * alloc, uint32_t alloc_impl)
     case CPU_RINGBUF_IMPL:
       alloc->allocate = cpu_ringbuf_allocate;
       alloc->deallocate = cpu_ringbuf_deallocate;
+      alloc->share = cpu_ringbuf_share;
       alloc->copy_from = cpu_copy_from;
       alloc->copy_to = cpu_copy_to;
       alloc->copy = cpu_copy;
@@ -111,6 +112,7 @@ void populate_local_fn_pointers(hma_allocator_t * alloc, uint32_t alloc_impl)
     case CUDA_RINGBUF_IMPL:
       alloc->allocate = cuda_ringbuf_allocate;
       alloc->deallocate = cuda_ringbuf_deallocate;
+      alloc->share = cuda_ringbuf_share;
       alloc->copy_from = cuda_ringbuf_copy_from;
       alloc->copy_to = cuda_ringbuf_copy_to;
       alloc->copy = cuda_ringbuf_copy;
@@ -211,6 +213,8 @@ struct hma_allocator * remap_shared_allocator(int shmem_id)
   }
   hma_allocator_t * temp = shared_portion - sizeof(fps_t);
 
+  // TODO: Modify specs for individual remap to use a PROT_NONE mapping spanning local, shared, and
+  //       device mappings, then overwrite it with MAP_FIXED and SHM_REMAP (latter isn't posix portable)
   // Lookup allocator's remap function and let it bootstrap itself and any memory pool
   int lookup_ind = temp->strategy * NUM_DEV_TYPES + temp->device_type;
   struct hma_allocator * alloc = (remap_fps[lookup_ind])(temp);

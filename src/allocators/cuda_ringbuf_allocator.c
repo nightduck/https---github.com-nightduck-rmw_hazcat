@@ -69,14 +69,11 @@ cuda_ringbuf_allocator_t * create_cuda_ringbuf_allocator(size_t item_size, size_
 
   // Create CUDA allocation and remap self
   CUdeviceptr d_addr;
-  size_t allocator_sz = LOCAL_GRANULARITY + SHARED_GRANULARITY;
-  allocator_sz += gran - allocator_sz % gran;   // Reserve some extra for allocator in front
   CHECK_DRV(cuMemAddressReserve(&d_addr,
-    CUDA_RINGBUF_ALLOCATION_SIZE + allocator_sz,
+    CUDA_RINGBUF_ALLOCATION_SIZE,
     lcm(SHARED_GRANULARITY, gran), 0, 0ULL));
 
   // cuMemMap (offset set to allocator_sz when allowed to be non-zero)
-  d_addr += allocator_sz / sizeof(int);
   CHECK_DRV(cuMemMap(d_addr, pool_size, 0, original_handle, 0));
 
   // cuMemSetAccess
@@ -91,16 +88,18 @@ cuda_ringbuf_allocator_t * create_cuda_ringbuf_allocator(size_t item_size, size_
 
   struct cuda_ringbuf_allocator * alloc = (struct cuda_ringbuf_allocator *)create_shared_allocator(
     (void *)(uintptr_t)d_addr - SHARED_GRANULARITY - sizeof(fps_t),
-    sizeof(struct cuda_ringbuf_allocator) + sizeof(atomic_uint) * ring_size,
+    sizeof(struct cuda_ringbuf_allocator) + sizeof(atomic_int) * ring_size,
     gran, ALLOC_RING, CUDA, 0);
 
   // Construct strategy
   alloc->count = 0;
   alloc->rear_it = 0;
   alloc->item_size = item_size;
-  alloc->ring_size = (pool_size - sizeof(struct cuda_ringbuf_allocator)) / item_size;
+  alloc->ring_size = ring_size;   // TODO: Expand to fill max a page aligned mapping can accommodate
   alloc->ipc_handle = ipc_handle;
-
+  alloc->pool_offset = sizeof(struct cuda_ringbuf_allocator) - sizeof(fps_t) +
+    sizeof(atomic_int) * ring_size;
+  alloc->pool_offset += (SHARED_GRANULARITY - alloc->pool_offset % SHARED_GRANULARITY) + sizeof(fps_t);
   return alloc;
 }
 
@@ -120,8 +119,7 @@ int cuda_ringbuf_allocate(void * self, size_t size)
 
     // TODO: Redo this to consider page alignment and the array of reference pointers in CPU memory
     // Give address relative to shared object
-    int ret = sizeof(struct cuda_ringbuf_allocator) + s->ring_size * sizeof(atomic_uint) +
-      s->item_size * forward_it;
+    int ret = s->pool_offset + s->item_size * forward_it;
 
     // Update count of how many elements in pool
     s->count++;
@@ -136,10 +134,9 @@ void cuda_ringbuf_share(void * self, int offset) {
   struct cuda_ringbuf_allocator * s = (struct cuda_ringbuf_allocator *)self;
 
   // TODO: Redo this to consider page alignment
-  int index = (offset - sizeof(struct cuda_ringbuf_allocator) - s->ring_size * sizeof(atomic_uint))
-    / s->item_size;
+  int index = (offset - s->pool_offset) / s->item_size;
   atomic_uint * ref_count = (uint8_t*)self + sizeof(struct cuda_ringbuf_allocator);
-  ref_count[index] = 1;
+  atomic_fetch_add(&ref_count[index], 1);
 }
 
 void cuda_ringbuf_deallocate(void * self, int offset)
@@ -150,7 +147,7 @@ void cuda_ringbuf_deallocate(void * self, int offset)
   }
 
   // TODO: Redo this to consider page alignment
-  int entry = (offset - sizeof(struct cuda_ringbuf_allocator)) / s->item_size;
+  int entry = (offset - s->pool_offset) / s->item_size;
 
   // Decrement reference counter and only go through with deallocate if it's zero
   atomic_uint * ref_count = (uint8_t*)self + sizeof(struct cuda_ringbuf_allocator);
@@ -167,6 +164,7 @@ void cuda_ringbuf_deallocate(void * self, int offset)
   // Most likely scenario: entry == rear_it as allocations are deallocated in order
   s->rear_it = entry + 1;
   s->count = forward_it - s->rear_it;
+  s->rear_it %= s->ring_size;
 }
 
 void cuda_ringbuf_copy_from(void * here, void * there, size_t size)
@@ -191,9 +189,6 @@ struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp)
   struct cuda_ringbuf_allocator * cuda_alloc = (struct cuda_ringbuf_allocator *)temp;
   size_t pool_size = cuda_alloc->item_size * cuda_alloc->ring_size;
 
-  // TODO: This is breaking on "invalid device ordinal". Something about passing a 0 to
-  // cuMemCreate above. Look at this: https://github.com/NVIDIA/cuda-samples/blob/b312abaa07ffdc1ba6e3d44a9bc1a8e89149c20b/Samples/3_CUDA_Features/memMapIPCDrv/memMapIpc.cpp#L419
-  // and investigate device IDs with cuDeviceGetCount, cuDeviceGet, etc
   // Get shareable handle
   CUmemGenericAllocationHandle handle;
   CHECK_DRV(
@@ -203,7 +198,7 @@ struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp)
 
   // Create CUDA allocation and remap self
   CUdeviceptr d_addr;
-  CHECK_DRV(cuMemAddressReserve(&d_addr, 0x80000000, 0, 0, 0ULL));
+  CHECK_DRV(cuMemAddressReserve(&d_addr, CUDA_RINGBUF_ALLOCATION_SIZE, 0, 0, 0ULL));
 
   // cuMemMap (with offset?)struct cpu_ringbuf_allocator * 
   CHECK_DRV(cuMemMap(d_addr, pool_size, 0, handle, 0));
@@ -216,18 +211,41 @@ struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp)
   CHECK_DRV(cuMemSetAccess(d_addr, pool_size, &accessDesc, 1));
 
   // Map in shared portion of allocator
-  cuda_alloc = shmat(temp->shmem_id, (void *)(uintptr_t)d_addr, 0);
+  size_t shared_sz = sizeof(cuda_ringbuf_allocator_t) + cuda_alloc->ring_size*sizeof(atomic_int);
+  shared_sz += SHARED_GRANULARITY - shared_sz % SHARED_GRANULARITY;
+  cuda_alloc = shmat(temp->shmem_id, (void *)(uintptr_t)d_addr - shared_sz, 0);
+  if (cuda_alloc == MAP_FAILED) {
+    printf("cuda_ringbuf_remap failed on creation of shared portion\n");
+    handle_error("shmat");
+  }
 
   // Free handle. Memory will stay valid as long as it is mapped
   CHECK_DRV(cuMemRelease(handle));
 
-  // fps can now be typecast to cuda_ringbuf_allocator* and work correctly. Updates to any member
-  // besides top 40 bytes will be visible across processes
+  // alloc is partially constructed at this point. The local portion will be created and populated
+  // by remap_shared_allocator, which calls this function
   return cuda_alloc;
 }
 
 void cuda_ringbuf_unmap(struct hma_allocator * alloc)
 {  
+  cuda_ringbuf_allocator_t * cuda_alloc = (cuda_ringbuf_allocator_t*)alloc;
+  
+  CUmemAllocationProp props = {};
+  props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
+  props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+  props.location.id = 0;
+  props.requestedHandleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
+  size_t gran;
+  CHECK_DRV(cuMemGetAllocationGranularity(&gran, &props, CU_MEM_ALLOC_GRANULARITY_MINIMUM));
+
+  void * dev_mem = (uint8_t*)alloc + sizeof(fps_t) + sizeof(cuda_ringbuf_allocator_t) + sizeof(atomic_int)*cuda_alloc->ring_size;
+  dev_mem += SHARED_GRANULARITY - (uint)dev_mem % SHARED_GRANULARITY;
+
+  CUdeviceptr reservation = (CUdeviceptr)(uintptr_t)dev_mem;
+  CHECK_DRV(cuMemUnmap(reservation, CUDA_RINGBUF_ALLOCATION_SIZE));
+  CHECK_DRV(cuMemAddressFree(reservation, CUDA_RINGBUF_ALLOCATION_SIZE));
+
   struct shmid_ds buf;
   if(shmctl(alloc->shmem_id, IPC_STAT, &buf) == -1) {
     printf("Destruction failed on fetching segment info\n");
@@ -244,31 +262,12 @@ void cuda_ringbuf_unmap(struct hma_allocator * alloc)
         return;
     }
   }
-  int ret = shmdt((uint8_t*)alloc + sizeof(fps_t));
+  void * shared_portion = (void*)((uint8_t*)alloc + sizeof(fps_t));
+  int ret = shmdt(shared_portion);
   if(ret) {
     printf("cpu_ringbuf_unmap, failed to detach\n");
     handle_error("shmdt");
   }
-  if(munmap((uint8_t*)alloc + sizeof(fps_t) - LOCAL_GRANULARITY, LOCAL_GRANULARITY)) {
-    printf("cpu_ringbuf_unmap, failed to remove local portion\n");
-    handle_error("shmdt");
-  }
-  
-  CUmemAllocationProp props = {};
-  props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
-  props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-  props.location.id = 0;
-  props.requestedHandleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
-  size_t gran;
-  CHECK_DRV(cuMemGetAllocationGranularity(&gran, &props, CU_MEM_ALLOC_GRANULARITY_MINIMUM));
-
-  size_t allocator_sz = LOCAL_GRANULARITY + SHARED_GRANULARITY;
-  allocator_sz += gran - allocator_sz % gran;   // Reserve some extra for allocator in front
-
-  CUdeviceptr dev_pool = (CUdeviceptr)(uintptr_t)(DEVICE_ALIGNMENT(alloc, cuda_ringbuf_allocator_t));
-  CUdeviceptr reservation = dev_pool - allocator_sz / sizeof(int);
-  CHECK_DRV(cuMemUnmap(dev_pool, CUDA_RINGBUF_ALLOCATION_SIZE));
-  CHECK_DRV(cuMemAddressFree(reservation, CUDA_RINGBUF_ALLOCATION_SIZE + allocator_sz));
 }
 
 #ifdef __cplusplus

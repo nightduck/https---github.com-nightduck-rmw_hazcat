@@ -214,7 +214,8 @@ struct hma_allocator * remap_shared_allocator(int shmem_id)
   hma_allocator_t * temp = shared_portion - sizeof(fps_t);
 
   // TODO: Modify specs for individual remap to use a PROT_NONE mapping spanning local, shared, and
-  //       device mappings, then overwrite it with MAP_FIXED and SHM_REMAP (latter isn't posix portable)
+  //       device mappings, then munmap unaligned portions, and then overwrite desired ranges with
+  //       MAP_FIXED and SHM_REMAP (latter isn't posix portable)
   // Lookup allocator's remap function and let it bootstrap itself and any memory pool
   int lookup_ind = temp->strategy * NUM_DEV_TYPES + temp->device_type;
   struct hma_allocator * alloc = (remap_fps[lookup_ind])(temp);

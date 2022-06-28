@@ -117,6 +117,13 @@ if(BUILD_TESTING)
     test_msgs std_msgs 
     rcutils
   )
+
+  ament_add_gtest(allocator_cuda_test test/hazcat_cuda_allocator_test.cpp)
+  target_link_libraries(allocator_cuda_test hazcat_allocators)
+  ament_target_dependencies(allocator_cuda_test
+    test_msgs std_msgs
+    rcutils
+  )
 endif()
 
 ament_package()

@@ -58,7 +58,7 @@ extern "C"
 
 #define LOCAL_ALIGNMENT(a, t)   (uint8_t*)a - ((uint8_t*)a % LOCAL_GRANULARITY)
 #define SHARED_ALIGNMENT(a, t)  (uint8_t*)a + sizeof(fps_t)
-#define DEVICE_ALIGNMENT(a, t)  (uint8_t*)(((long)a + sizeof(fps_t)) / SHARED_GRANULARITY * SHARED_GRANULARITY + SHARED_GRANULARITY)
+//BROKEN#define DEVICE_ALIGNMENT(a, t)  (uint8_t*)(((long)a + sizeof(fps_t)) / SHARED_GRANULARITY * SHARED_GRANULARITY + SHARED_GRANULARITY)
 
 /*
   // Copy paste at head of new allocators, so first 34 bytes can be cast as an hma_allocator
@@ -119,7 +119,7 @@ static inline int lcm(int a, int b) {
     b = temp;
   }
   int gcd = (a > b) ? a : b;
-  int lcm = (a0 * b0) / gcd;
+  int lcm = a0 / gcd * b0;  // (a*b)/gcd but out of order to prevent arithmetic overflow
   return lcm;
 }
 

@@ -23,7 +23,8 @@ extern "C"
 struct cpu_ringbuf_allocator * create_cpu_ringbuf_allocator(size_t item_size, size_t ring_size)
 {
   struct cpu_ringbuf_allocator * alloc = (struct cpu_ringbuf_allocator *)create_shared_allocator(
-    NULL, sizeof(struct cpu_ringbuf_allocator) + (item_size + sizeof(uint32_t)) * ring_size, 0, ALLOC_RING, CPU, 0);
+    NULL, sizeof(struct cpu_ringbuf_allocator) + (item_size + sizeof(uint32_t)) * ring_size,
+    1, ALLOC_RING, CPU, 0);
 
   alloc->count = 0;
   alloc->rear_it = 0;
@@ -43,10 +44,10 @@ int cpu_ringbuf_allocate(void * self, size_t size)
   int forward_it = (s->rear_it + s->count) % s->ring_size;
 
   // Give address relative to allocator, taking into account the 4 bytes in front for reference counter
-  int ret = sizeof(struct cpu_ringbuf_allocator) + sizeof(atomic_uint) + (s->item_size + sizeof(atomic_uint)) * forward_it;
+  int ret = sizeof(struct cpu_ringbuf_allocator) + sizeof(atomic_int) + (s->item_size + sizeof(atomic_int)) * forward_it;
 
   // Set reference counter to 1
-  atomic_uint * ref_count = ret - 1;
+  atomic_int * ref_count = (atomic_int*)(self + ret - sizeof(atomic_int));
   atomic_store(ref_count, 1);
 
   // Update count of how many elements in pool
@@ -56,7 +57,7 @@ int cpu_ringbuf_allocate(void * self, size_t size)
 }
 
 void cpu_ringbuf_share(void * self, int offset) {
-  atomic_uint * ref_count = (uint8_t*)self + offset - 1;
+  atomic_int * ref_count = (uint8_t*)self + offset - sizeof(atomic_int);
   atomic_fetch_add(ref_count, 1);
 }
 
@@ -67,13 +68,15 @@ void cpu_ringbuf_deallocate(void * self, int offset)
     return;       // Allocator empty, nothing to deallocate
   }
 
-  // Decrement reference counter and only go through with deallocate if it's zero
-  atomic_uint * ref_count = (uint8_t*)self + offset - 1;
-  if(atomic_fetch_add(ref_count, -1) > 0) {
+  // Decrement reference counter and only go through with deallocate if it's zero 
+  // (will read as 1 because fetch happens before decrement)
+  atomic_int * ref_count = (uint8_t*)self + offset - sizeof(atomic_int);
+  if(atomic_fetch_add(ref_count, -1) > 1) {
     return;
   }
 
-  int entry = (offset - sizeof(struct cpu_ringbuf_allocator)) / s->item_size;
+  int entry = (offset - sizeof(struct cpu_ringbuf_allocator)) /
+    (s->item_size + sizeof(atomic_int));
 
   // Do math with imaginary overflow indices so forward_it >= entry >= rear_it
   int forward_it = s->rear_it + s->count;
@@ -81,9 +84,15 @@ void cpu_ringbuf_deallocate(void * self, int offset)
     entry += s->ring_size;
   }
 
+  if (__glibc_unlikely(entry >= forward_it)) {
+    // Invalid argument, already deallocated
+    return;
+  }
+
   // Most likely scenario: entry == rear_it as allocations are deallocated in order
   s->rear_it = entry + 1;
   s->count = forward_it - s->rear_it;
+  s->rear_it %= s->ring_size;
 }
 
 struct hma_allocator * cpu_ringbuf_remap(struct hma_allocator * temp)
@@ -114,7 +123,8 @@ void cpu_ringbuf_unmap(struct hma_allocator * alloc)
         return;
     }
   }
-  int ret = shmdt(alloc);
+  void * shared_portion = (void*)((uint8_t*)alloc + sizeof(fps_t));
+  int ret = shmdt(shared_portion);
   if(ret) {
     printf("cpu_ringbuf_unmap, failed to detach\n");
     handle_error("shmdt");

@@ -17,6 +17,9 @@ extern "C"
 {
 #endif
 
+#define _GNU_SOURCE
+
+#include <errno.h>
 #include "rmw_hazcat/allocators/hma_template.h"
 #include "rmw_hazcat/allocators/cpu_ringbuf_allocator.h"
 #include "rmw_hazcat/allocators/cuda_ringbuf_allocator.h"
@@ -128,6 +131,11 @@ struct hma_allocator * create_shared_allocator(
   void * hint, size_t alloc_size, size_t dev_granularity, uint16_t strategy,
   uint16_t device_type, uint8_t device_number)
 {
+  // TODO: Learn more about page tables and tweak this guy. Or keep a global iterator
+  if (hint == NULL) {
+    hint = 0x355500000000;
+  }
+
   // Calculate shared memory mapping
   size_t shared_portion_sz = alloc_size - sizeof(fps_t);
   shared_portion_sz += SHARED_GRANULARITY - shared_portion_sz % SHARED_GRANULARITY;
@@ -140,17 +148,30 @@ struct hma_allocator * create_shared_allocator(
   // Adjust hint so shared and device memory mappings align according to system requirements
   uint8_t * dev_pool_alignment = (uint8_t*)hint + sizeof(fps_t) + shared_portion_sz;
   dev_pool_alignment -= (int)dev_pool_alignment % lcm_val;
-  void * mapping_start = dev_pool_alignment - shared_portion_sz - LOCAL_GRANULARITY;
-  hint = dev_pool_alignment - shared_portion_sz - sizeof(fps_t);
+  hint = dev_pool_alignment - shared_portion_sz - LOCAL_GRANULARITY;
 
   // Make mapping for local portion of allocator (aligned at end of page)
-  struct hma_allocator * alloc = (uint8_t*)mmap(
-    mapping_start, LOCAL_GRANULARITY, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS, 0, 0) +
-    LOCAL_GRANULARITY - sizeof(fps_t);
+  void * mapping_start = mmap(hint, LOCAL_GRANULARITY, PROT_READ | PROT_WRITE,
+    MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+
+  // TODO: Learn more about page tables and tweak this guy
+  while(mapping_start == MAP_FAILED && hint < 0x7f0000000000) {
+    int err = errno;
+    hint += 0x100000000;
+    mapping_start = mmap(hint, LOCAL_GRANULARITY, PROT_READ | PROT_WRITE,
+        MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  }
+  if (mapping_start == MAP_FAILED) {
+    printf("failed to create local portion\n");
+    handle_error("mmap");
+  }
+
+  // Get pointer to alloc, which won't be page aligned, but straddling different mappings
+  struct hma_allocator * alloc = mapping_start + LOCAL_GRANULARITY - sizeof(fps_t);
   populate_local_fn_pointers(alloc, device_type << 12 | strategy);
 
   // Create shared memory block (requested size )
-  int id = shmget(IPC_PRIVATE, alloc_size, 0640);
+  int id = shmget(IPC_PRIVATE, shared_portion_sz, 0640);
   if (id == -1) {
     // TODO: More robust error checking
     return NULL;
@@ -199,7 +220,12 @@ void unmap_shared_allocator(struct hma_allocator * alloc)
 {
   // Lookup allocator's unmap function and let it unmap itself and associated memory pool
   int lookup_ind = alloc->strategy * NUM_DEV_TYPES + alloc->device_type;
-  (unmap_fps[lookup_ind])(alloc);
+  (unmap_fps[lookup_ind])(alloc);   // TODO: Add unmap calls to the fps_t struct
+
+  if(munmap((uint8_t*)alloc + sizeof(fps_t) - LOCAL_GRANULARITY, LOCAL_GRANULARITY)) {
+    printf("failed to detach local portion of allocator\n");
+    handle_error("munmap");
+  }
 }
 
 // copy_to, copy_from, and copy shouldn't get called on a CPU allocator, but they've been

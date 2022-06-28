@@ -32,6 +32,7 @@ include_directories(include)
 
 include_directories(${CUDA_INCLUDE_DIRS})
 
+# TODO: Separate out different allocators by domain based on which ones need extra libraries
 set(hazcat_allocator_sources
   src/allocators/hma_template.c
   src/allocators/cpu_ringbuf_allocator.c
@@ -59,6 +60,12 @@ add_library(hazcat_allocators ${hazcat_allocator_sources})
 target_include_directories(hazcat_allocators PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<INSTALL_INTERFACE:include>")
+  target_link_libraries(hazcat_allocators cuda)
+  ament_target_dependencies(hazcat_allocators
+    CUDA
+    rcutils
+  )
+
 
 add_library(hazcat_message_queue ${hazcat_message_queue_sources})
 target_include_directories(hazcat_message_queue PUBLIC
@@ -104,10 +111,10 @@ if(BUILD_TESTING)
   find_package(test_msgs REQUIRED)
   find_package(std_msgs REQUIRED)
 
-  ament_add_gtest(allocator_test test/hazcat_allocator_test.cpp)
-  target_link_libraries(allocator_test hazcat_allocators cuda)
-  ament_target_dependencies(allocator_test
-    CUDA test_msgs std_msgs 
+  ament_add_gtest(allocator_cpu_test test/hazcat_cpu_allocator_test.cpp)
+  target_link_libraries(allocator_cpu_test hazcat_allocators)
+  ament_target_dependencies(allocator_cpu_test
+    test_msgs std_msgs 
     rcutils
   )
 endif()

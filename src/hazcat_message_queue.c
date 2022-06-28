@@ -337,7 +337,7 @@ hazcat_take(rmw_subscription_t *sub)
   // Zero-copy magic. Copy here, or don't. Two msg pointers will be identical if allocators are
   // in same memory domain
   msg_ref_t ret;
-  void *msg = OFFSET_TO_PTR(src_alloc, entry->offset);
+  void *msg = GET_PTR(src_alloc, entry->offset, void);
   if (src_alloc->domain == alloc->domain)
   {
     // Zero copy condition. Increase ref count on message and use that without copy
@@ -348,7 +348,7 @@ hazcat_take(rmw_subscription_t *sub)
   else
   {
     // Allocate space on the destination allocator
-    void *here = OFFSET_TO_PTR(alloc, ALLOCATE(alloc, entry->len));
+    void *here = GET_PTR(alloc, ALLOCATE(alloc, entry->len), void);
     assert(here > alloc);
 
     int lookup_ind = alloc->strategy * NUM_DEV_TYPES + alloc->device_type;
@@ -387,7 +387,7 @@ hazcat_take(rmw_subscription_t *sub)
         entry = get_entry(mq, d, i);
         // TODO: get allocator from hashtable
         //src_alloc = ???;
-        DEALLOCATE(src_alloc, OFFSET_TO_PTR(src_alloc, entry->offset));
+        DEALLOCATE(src_alloc, entry->offset);
       }
     }
   }

@@ -33,7 +33,7 @@ extern "C"
 typedef struct reference_bits
 {
   // Indicates how many subscribers haven't read message yet. 0 indicates entry empty
-  // TODO: Needs to be atomic
+  // TODO: Remove this, and refactor publish and take. Message queue no longer tracks ownership
   uint32_t interest_count;
 
   // Bitmask to indicate which domains have a copy of this message
@@ -115,6 +115,14 @@ inline entry_t *get_entry(message_queue_t *mq, int domain, int i)
 {
   return (uint8_t *)mq + sizeof(message_queue_t) + mq->len * sizeof(ref_bits_t) + domain * mq->len * sizeof(entry_t) + i * sizeof(entry_t);
 }
+
+// Misc initialization stuff.
+rmw_ret_t
+hazcat_init();
+
+// Misc destruction stuff
+rmw_ret_t
+hazcat_fini();
 
 // Registers a publisher with the zero copy buffer associated with it's name. If none exists, one
 // is created. If an existing one does not accommodate the memory domain or history requirements of

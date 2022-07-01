@@ -18,11 +18,13 @@ extern "C"
 #endif
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <fcntl.h>
 #include <unistd.h>
 
 #include <linux/limits.h> // TODO: Portability. Offers NAME_MAX for shmem_file below
 
+#include "rmw_hazcat/hashtable.h"
 #include "rmw_hazcat/hazcat_message_queue.h"
 
 char shmem_file[NAME_MAX] = "/dev/shm/ros2_hazcat/";
@@ -30,12 +32,33 @@ const int dir_offset = 21;
 
 mq_node_t mq_list = {NULL, NULL, -1, NULL};
 
-// TODO: Hash table of mapped allocators
+// Hash table linking all known allocators for this process
+hashtable_t * ht;
+
+rmw_ret_t
+hazcat_init() {
+  ht = hashtable_init(128);
+  if (ht == NULL) {
+    RMW_SET_ERROR_MSG("Couldn't initialize hazcat middleware");
+    return RMW_RET_ERROR;
+  } else {
+    return RMW_RET_OK;
+  }
+}
+
+rmw_ret_t
+hazcat_fini() {
+  hashtable_fini(ht);
+  return RMW_RET_OK;
+}
 
 // Convenient utility method since 95% of registering subscription is same as registering publisher
 rmw_ret_t
 hazcat_register_pub_or_sub(pub_sub_data_t *data, const char *topic_name, rmw_qos_profile_t *qos)
 {
+  // Register associated allocator, so we can lookup address given shared mem id
+  hashtable_insert(ht, data->alloc->shmem_id, data->alloc);
+
   strcpy(shmem_file + 21, topic_name);
   message_queue_t *mq;
 
@@ -139,7 +162,7 @@ hazcat_register_pub_or_sub(pub_sub_data_t *data, const char *topic_name, rmw_qos
       break;
     }
   }
-  if (i == DOMAINS_PER_TOPIC)
+  if (i == DOMAINS_PER_TOPIC)   // Message queue doesn't contain preferred memory domain yet
   {
     if (mq->num_domains == DOMAINS_PER_TOPIC)
     {
@@ -180,7 +203,7 @@ hazcat_register_pub_or_sub(pub_sub_data_t *data, const char *topic_name, rmw_qos
 rmw_ret_t
 hazcat_register_publisher(rmw_publisher_t *pub, rmw_qos_profile_t *qos)
 {
-  int ret = hazcat_register_pub_or_sub(pub->data, pub->topic_name, qos);
+  int ret = hazcat_register_pub_or_sub(pub->data, pub->topic_name, qos);  // Heavy lifting here
   if (ret != RMW_RET_OK)
   {
     return ret;
@@ -214,7 +237,7 @@ hazcat_register_publisher(rmw_publisher_t *pub, rmw_qos_profile_t *qos)
 rmw_ret_t
 hazcat_register_subscription(rmw_subscription_t *sub, rmw_qos_profile_t *qos)
 {
-  int ret = hazcat_register_pub_or_sub(sub->data, sub->topic_name, qos);
+  int ret = hazcat_register_pub_or_sub(sub->data, sub->topic_name, qos);  // Heavy lifting here
   if (ret != RMW_RET_OK)
   {
     return ret;
@@ -245,12 +268,19 @@ hazcat_register_subscription(rmw_subscription_t *sub, rmw_qos_profile_t *qos)
   return RMW_RET_OK;
 }
 
-// TODO: Read locks on message queue
 rmw_ret_t
 hazcat_publish(rmw_publisher_t *pub, void *msg)
 {
+  // Acquire lock on shared file
+  struct flock fl = {F_RDLCK, SEEK_SET, 0, 0, 0};
+  if (fcntl(((pub_sub_data_t *)pub->data)->mq->fd, F_SETLKW, &fl) == -1)
+  {
+    RMW_SET_ERROR_MSG("Couldn't acquire read-lock on shared message queue");
+    return RMW_RET_ERROR;
+  }
+
   hma_allocator_t *alloc = ((pub_sub_data_t *)pub->data)->alloc;
-  message_queue_t *mq = ((pub_sub_data_t *)pub->data)->mq;
+  message_queue_t *mq = ((pub_sub_data_t *)pub->data)->mq->elem;
   int domain_col = ((pub_sub_data_t *)pub->data)->array_num;
 
   // Increment index atomically and use result as our entry
@@ -285,61 +315,64 @@ hazcat_publish(rmw_publisher_t *pub, void *msg)
 
   // TODO: Add some assertions up in here, check for null pointers and all
 
+
+  // Release lock on shared file
+  struct flock fl = {F_UNLCK, SEEK_SET, 0, 0, 0};
+  if (fcntl(((pub_sub_data_t *)pub->data)->mq->fd, F_SETLK, &fl) == -1)
+  {
+    RMW_SET_ERROR_MSG("Couldn't release read-lock on shared message queue");
+    return RMW_RET_ERROR;
+  }
+
   return RMW_RET_OK;
 }
 
-// TODO: Read locks on message queue. Possessing a read lock ensures static dimensions of message queue
 // Fetches a message reference from shared message queue.
+// TODO: This may need to return an rmw_ret_t value. Refactor alloc and message are argument references?
 msg_ref_t
 hazcat_take(rmw_subscription_t *sub)
 {
+  // Acquire lock on shared file
+  struct flock fl = {F_RDLCK, SEEK_SET, 0, 0, 0};
+  if (fcntl(((pub_sub_data_t *)sub->data)->mq->fd, F_SETLKW, &fl) == -1)
+  {
+    RMW_SET_ERROR_MSG("Couldn't acquire read-lock on shared message queue");
+    msg_ref_t ret;
+    ret.alloc = NULL;
+    ret.msg = NULL;
+    return ret;
+  }
+
   hma_allocator_t *alloc = ((pub_sub_data_t *)sub->data)->alloc;
   message_queue_t *mq = ((pub_sub_data_t *)sub->data)->mq;
 
   // Find next relevant message (skip over stale messages if we missed them)
   int i = ((pub_sub_data_t *)sub->data)->next_index;
   int history = ((sub_opts_t *)sub->options.rmw_specific_subscription_payload)->qos_history;
-  while ((mq->index + mq->len - i) % mq->len > history)
-  {
-    ref_bits_t *ref_bits = get_ref_bits(mq, i);
-    ref_bits->interest_count--;
-    i++;
-    i %= mq->len;
+  i = ((mq->index + mq->len - history) % mq->len > i) ? (mq->index + mq->len - history) % mq->len : i;
+
+  // No message available
+  if (i == mq->index) {
+    msg_ref_t ret;
+    ret.alloc = NULL;
+    ret.msg = NULL;
+    return ret;
   }
 
   // Get message entry
+  msg_ref_t ret;
   ref_bits_t *ref_bits = get_ref_bits(mq, i);
-  entry_t *entry;
-  if (1 << ((pub_sub_data_t *)sub->data)->array_num & ref_bits->availability)
+  if ((1 << ((pub_sub_data_t *)sub->data)->array_num) & ref_bits->availability)
   {
     // Message in preferred domain
-    entry = get_entry(mq, alloc->domain, i);
-  }
-  else
-  {
-    // Find first domain with a copy of this message
-    // TODO: If an allocator can bypass CPU domain on copy, they might have a preferential order of
-    //       domains to copy from. Take this into consideration. For now, find first available
-    int d = 0;
-    while ((1 << d) ^ ref_bits->availability)
-    {
-      d++;
-    }
-    entry = get_entry(mq, d, i);
-  }
+    entry_t * entry = get_entry(mq, alloc->domain, i);
 
-  // Update for next take
-  ((pub_sub_data_t *)sub->data)->next_index = (i + 1) % mq->len;
+    // Lookup src allocator with hashtable mapping shm id to mem address
+    hma_allocator_t *src_alloc = hashtable_get(ht, entry->alloc_shmem_id);
 
-  // TODO: Lookup src allocator with hashtable mapping shm id to mem address
-  hma_allocator_t *src_alloc;
+    msg_ref_t ret;
+    void *msg = GET_PTR(src_alloc, entry->offset, void);
 
-  // Zero-copy magic. Copy here, or don't. Two msg pointers will be identical if allocators are
-  // in same memory domain
-  msg_ref_t ret;
-  void *msg = GET_PTR(src_alloc, entry->offset, void);
-  if (src_alloc->domain == alloc->domain)
-  {
     // Zero copy condition. Increase ref count on message and use that without copy
     SHARE(src_alloc, msg);
     ret.alloc = src_alloc;
@@ -347,6 +380,21 @@ hazcat_take(rmw_subscription_t *sub)
   }
   else
   {
+    // Find first domain with a copy of this message
+    // TODO: If an allocator can bypass CPU domain on copy, they might have a preferential order of
+    //       domains to copy from. Take this into consideration. For now, find first available
+    int d = 0;
+    while ((1 << d) & ~ref_bits->availability)
+    {
+      d++;
+    }
+    entry_t * entry = get_entry(mq, d, i);
+
+    // Lookup src allocator with hashtable mapping shm id to mem address
+    hma_allocator_t *src_alloc = hashtable_get(ht, entry->alloc_shmem_id);
+
+    void *msg = GET_PTR(src_alloc, entry->offset, void);
+
     // Allocate space on the destination allocator
     void *here = GET_PTR(alloc, ALLOCATE(alloc, entry->len), void);
     assert(here > alloc);
@@ -373,23 +421,15 @@ hazcat_take(rmw_subscription_t *sub)
     ret.msg = here;
   }
 
-  // We're the last interested subscriber. Free message queue's references to all message copies
-  // May deallocate if no other subscribers hold references to them
-  ref_bits->interest_count--;
-  // TODO: Make interest_count atomic
-  // if (atomic_fetch_add(ref_bits->interest_count, -1) == 0)
-  if (ref_bits->interest_count == 0)
+  // Update for next take
+  ((pub_sub_data_t *)sub->data)->next_index = (i + 1) % mq->len;
+
+  // Release lock on shared file
+  struct flock fl = {F_UNLCK, SEEK_SET, 0, 0, 0};
+  if (fcntl(((pub_sub_data_t *)sub->data)->mq->fd, F_SETLK, &fl) == -1)
   {
-    for (int d = 0; d < DOMAINS_PER_TOPIC; d++)
-    {
-      if (1 << d & ref_bits->availability)
-      {
-        entry = get_entry(mq, d, i);
-        // TODO: get allocator from hashtable
-        //src_alloc = ???;
-        DEALLOCATE(src_alloc, entry->offset);
-      }
-    }
+    RMW_SET_ERROR_MSG("Couldn't release read-lock on shared message queue");
+    // TODO: Return something?
   }
 
   return ret;
@@ -398,6 +438,9 @@ hazcat_take(rmw_subscription_t *sub)
 rmw_ret_t
 hazcat_unregister_publisher(rmw_publisher_t *pub)
 {
+  // Register associated allocator, so we can lookup address given shared mem id
+  hashtable_remove(ht, ((pub_sub_data_t *)pub->data)->alloc->shmem_id);
+
   mq_node_t *it = ((pub_sub_data_t *)pub->data)->mq;
   if (it == NULL)
   {
@@ -461,6 +504,9 @@ hazcat_unregister_publisher(rmw_publisher_t *pub)
 rmw_ret_t
 hazcat_unregister_subscription(rmw_subscription_t *sub)
 {
+  // Register associated allocator, so we can lookup address given shared mem id
+  hashtable_remove(ht, ((pub_sub_data_t *)sub->data)->alloc->shmem_id);
+
   mq_node_t *it = ((pub_sub_data_t *)sub->data)->mq;
   if (it == NULL)
   {
@@ -479,7 +525,7 @@ hazcat_unregister_subscription(rmw_subscription_t *sub)
     return RMW_RET_ERROR;
   }
 
-  // Decrement publisher count
+  // Decrement subscription count
   if (it->elem->sub_count > 0)
   {
     it->elem->sub_count--;

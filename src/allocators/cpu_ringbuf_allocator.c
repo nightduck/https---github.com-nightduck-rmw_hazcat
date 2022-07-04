@@ -23,8 +23,8 @@ extern "C"
 struct cpu_ringbuf_allocator * create_cpu_ringbuf_allocator(size_t item_size, size_t ring_size)
 {
   struct cpu_ringbuf_allocator * alloc = (struct cpu_ringbuf_allocator *)create_shared_allocator(
-    NULL, sizeof(struct cpu_ringbuf_allocator) + (item_size + sizeof(atomic_int)) * ring_size,
-    1, ALLOC_RING, CPU, 0);
+    sizeof(struct cpu_ringbuf_allocator) + (item_size + sizeof(atomic_int)) * ring_size,
+    0, LOCAL_GRANULARITY, ALLOC_RING, CPU, 0);
 
   alloc->count = 0;
   alloc->rear_it = 0;
@@ -105,33 +105,13 @@ struct hma_allocator * cpu_ringbuf_remap(struct hma_allocator * temp)
   }
 
   // Returned pointer is in unmapped memory
-  return shared - sizeof(fps_t);
+  return (hma_allocator_t*)(shared - sizeof(fps_t));
 }
 
 void cpu_ringbuf_unmap(struct hma_allocator * alloc)
 {
-  struct shmid_ds buf;
-  if(shmctl(alloc->shmem_id, IPC_STAT, &buf) == -1) {
-    printf("Destruction failed on fetching segment info\n");
-    //RMW_SET_ERROR_MSG("Error reading info about shared StaticPoolAllocator");
-    //return RMW_RET_ERROR;
-    return;
-  }
-  if(buf.shm_cpid == getpid()) {
-    printf("Marking segment fo removal\n");
-    if(shmctl(alloc->shmem_id, IPC_RMID, NULL) == -1) {
-        printf("Destruction failed on marking segment for removal\n");
-        //RMW_SET_ERROR_MSG("can't mark shared StaticPoolAllocator for deletion");
-        //return RMW_RET_ERROR;
-        return;
-    }
-  }
-  void * shared_portion = (void*)((uint8_t*)alloc + sizeof(fps_t));
-  int ret = shmdt(shared_portion);
-  if(ret) {
-    printf("cpu_ringbuf_unmap, failed to detach\n");
-    handle_error("shmdt");
-  }
+  // No device pool to remove, so just return
+  return;
 }
 
 #ifdef __cplusplus

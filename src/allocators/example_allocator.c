@@ -22,15 +22,30 @@ extern "C"
 
 struct example_allocator * create_example_allocator(size_t item_size, size_t ring_size)
 {
-  // TODO: Find address you want your allocator to start at. Might be determined by the memory
-  //       granularity of the device it is managing. Shouldn't overlap with temp
-  void * hint = NULL;
+  // TODO: Find granularity of device your allocator is managing. This is important in order to find
+  //       a reproducibly aligned range of memory. It must be a multiple of page size
+  void * dev_gran = LOCAL_GRANULARITY;
 
+  // Get 3 contiguous reservations for local, shared, and device memory. Map first two
   struct example_allocator * alloc = (struct example_allocator *)create_shared_allocator(
-    hint, sizeof(struct example_allocator), DEVICE, ALLOC_STRAT, 0);
-  // TODO: Change DEVICE and ALLOC_STRAT above
+    sizeof(struct example_allocator), item_size * ring_size, dev_gran, DEVICE, ALLOC_STRAT, 0);
+  // TODO: Change DEVICE and ALLOC_STRAT above.
+  // TODO: Increase alloc_size argument if allocator has unstructured data after it, such as lookup
+  //       tables and the like
+  // TODO: Modify pool_size as needed. The method will round up to the provided granularity, but
+  //       you may want to increase ring_size to take advantage of that added space
 
-  // TODO: Reserve device memory at end of allocator
+  // Calculate where device mapping starts
+  struct shmid_ds buf;
+  if(shmctl(alloc->shmem_id, IPC_STAT, &buf) == -1) {
+    printf("Destruction failed on fetching segment info\n");
+    //RMW_SET_ERROR_MSG("Error reading info about shared StaticPoolAllocator");
+    //return RMW_RET_ERROR;
+    return;
+  }
+  void * dev_boundary = (uint8_t*)alloc + sizeof(fps_t) + buf.shm_segsz;
+
+  // TODO: Map device memory at end of allocator, overwriting empty reservation
 
   // TODO: Construct strategy
 }
@@ -87,18 +102,37 @@ struct hma_allocator * example_remap(struct hma_allocator * temp)
   //       fps member. All the function pointers are in unmapped memory
   struct example_allocator * alloc = temp;
 
-  // TODO: Find address you want your allocator to start at. Might be determined by the memory
-  //       granularity of the device it is managing. Shouldn't overlap with temp
-  void * hint = NULL;
+  // TODO: Find size of allocator's device memory, as well as granularity of device memory
+  size_t dev_size = 0x80000;
+  void * dev_gran = 0x10000;
 
-  // TODO: Maybe reserve an address space if your device API requires it
+  // Get size of shared memory
+  struct shmid_ds buf;
+  if(shmctl(alloc->shmem_id, IPC_STAT, &buf) == -1) {
+    printf("Remap failed on fetching segment info\n");
+    //RMW_SET_ERROR_MSG("Remap failed on fetching segment info");
+    //return RMW_RET_ERROR;
+    return;
+  }
 
+  void * mapping = reserve_memory_for_allocator(buf.shm_segsz, dev_size, dev_gran);
+  if (mapping == MAP_FAILED) {
+    return NULL;
+  }
+
+  // NOTE: If you have a CPU allocator with no device memory segment, the next 7 lines are all this
+  //       function needs
   // Map in shared portion of allocator
-  alloc = shmat(temp->shmem_id, hint, 0) - sizeof(fps_t);
-  if (alloc == MAP_FAILED) {
+  void * shared_mapping = shmat(temp->shmem_id, mapping + LOCAL_GRANULARITY, 0);
+  if (shared_mapping == MAP_FAILED) {
     printf("example_remap failed on creation of shared portion\n");
     handle_error("shmat");
   }
+
+  alloc = shared_mapping - sizeof(fps_t);
+
+  // Calculate where device mapping starts
+  void * dev_boundary = (uint8_t*)alloc + sizeof(fps_t) + buf.shm_segsz;
 
   // TODO: Map in memory pool on device memory
 
@@ -109,31 +143,9 @@ struct hma_allocator * example_remap(struct hma_allocator * temp)
 
 void example_unmap(struct hma_allocator * alloc)
 {
+  // TODO: Unmap device memory pool
+  
   // TODO: Any special steps needed to cleanup existing allocations
-
-  // Unmap self, and destroy segment, if this is the last one
-  struct shmid_ds buf;
-  if(shmctl(alloc->shmem_id, IPC_STAT, &buf) == -1) {
-    printf("Destruction failed on fetching segment info\n");
-    //RMW_SET_ERROR_MSG("Error reading info about shared StaticPoolAllocator");
-    //return RMW_RET_ERROR;
-    return;
-  }
-  if(buf.shm_cpid == getpid()) {
-    printf("Marking segment fo removal\n");
-    if(shmctl(alloc->shmem_id, IPC_RMID, NULL) == -1) {
-        printf("Destruction failed on marking segment for removal\n");
-        //RMW_SET_ERROR_MSG("can't mark shared StaticPoolAllocator for deletion");
-        //return RMW_RET_ERROR;
-        return;
-    }
-  }
-  void * shared_portion = (void*)((uint8_t*)alloc + sizeof(fps_t));
-  int ret = shmdt(shared_portion);
-  if(ret) {
-    printf("cpu_ringbuf_unmap, failed to detach\n");
-    handle_error("shmdt");
-  }
 }
 
 #ifdef __cplusplus

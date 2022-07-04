@@ -123,10 +123,14 @@ static inline int lcm(int a, int b) {
   return lcm;
 }
 
+// Reserves a swath of virtual for allocator and memory pool such that alignment of shared and
+// device memory are both honored. Pages not readable and must be overwritten
+void * reserve_memory_for_allocator(size_t shared_size, size_t dev_size, size_t dev_granularity);
+
 // TODO: Update documentation
 // Don't call this outside this library
 struct hma_allocator * create_shared_allocator(
-  void * hint, size_t alloc_size, size_t dev_granularity, uint16_t strategy,
+  size_t alloc_size, size_t pool_size, size_t dev_granularity, uint16_t strategy,
   uint16_t device_type, uint8_t device_number);
 
 // TODO: Update documentation

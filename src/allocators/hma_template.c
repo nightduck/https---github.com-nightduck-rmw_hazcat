@@ -124,56 +124,64 @@ void populate_local_fn_pointers(hma_allocator_t * alloc, uint32_t alloc_impl)
   }
 }
 
+// Reserves a swath of virtual for allocator and memory pool such that alignment of shared and
+// device memory are both honored. Pages not readable and must be overwritten
+void * reserve_memory_for_allocator(size_t shared_size, size_t dev_size, size_t dev_granularity) {
+  // The allocator consists of 3 contiguous mappings: local, shared, and device memory.
+  size_t local_size = LOCAL_GRANULARITY;
+
+  // Dev pool must be aligned at an address that's multiple of this factor
+  // TODO: Added restriction that is must be power of 2?
+  size_t alignment_factor = lcm(SHARED_GRANULARITY, dev_granularity);
+
+  // A properly aligned range exists somewhere in an arbitrary mapping of this size. Reserve, but
+  // don't map it
+  void * rough_allocation = mmap(0x400000000, local_size + shared_size + dev_size + alignment_factor,
+    PROT_NONE, MAP_ANON | MAP_PRIVATE | MAP_FIXED, -1, 0);
+
+  // Get aligned start for allocation within that range
+  void * mapping_start = rough_allocation +
+    alignment_factor - ((long)rough_allocation + local_size + shared_size) % alignment_factor;
+
+  // Trim excess
+  // TODO: Check for len = 0
+  munmap(rough_allocation, mapping_start - rough_allocation);
+  munmap(mapping_start + local_size + shared_size + dev_size,
+    rough_allocation + alignment_factor - mapping_start);
+
+  return mapping_start;
+
+}
+
+// TODO: Use reserve_memory_for_allocator for reserve entire range needed
 // TODO: Update documentation
-// Hint must be sizeof(fps_t) bytes before a page boundary, and positioned such that shared portion
-// of allocator and memory pool align according to their granularity requirements. If these
-// conditions are not met, they will be corrected and hint will not match the returned pointer.
-// If pool_size is non-zero, it'll be rounded up to a multiple of device_granularity
+// Dev granularity must allways be a multiple of LOCAL_GRANULARITY, even if no dev pool is needed.
+// If no dev pool is needed, just set pool_size to 0
+// pool_size will be rounded up to multiple of dev_granularity
 struct hma_allocator * create_shared_allocator(
-  void * hint, size_t alloc_size, size_t dev_granularity, uint16_t strategy,
+  size_t alloc_size, size_t pool_size, size_t dev_granularity, uint16_t strategy,
   uint16_t device_type, uint8_t device_number)
 {
-  // TODO: Learn more about page tables and tweak this guy. Or keep a global iterator
-  if (hint == NULL) {
-    hint = 0x355500000000;
-  }
+  assert(dev_granularity % LOCAL_GRANULARITY == 0);
 
-  // Calculate shared memory mapping
-  size_t shared_portion_sz = alloc_size - sizeof(fps_t);
-  shared_portion_sz += SHARED_GRANULARITY - shared_portion_sz % SHARED_GRANULARITY;
+  // The allocator consists of 3 contiguous mappings: local, shared, and device memory.
+  size_t local_size = LOCAL_GRANULARITY;
+  size_t shared_size = (alloc_size - sizeof(fps_t) + SHARED_GRANULARITY) -
+    (alloc_size - sizeof(fps_t)) % SHARED_GRANULARITY;
+  size_t dev_size = pool_size + (dev_granularity - pool_size) % dev_granularity;
 
-  // Round up granularity of pool (must be non-zero)
-  dev_granularity += (SHARED_GRANULARITY - dev_granularity) % SHARED_GRANULARITY;
-
-  size_t lcm_val = lcm(dev_granularity, SHARED_GRANULARITY);
-
-  // Adjust hint so shared and device memory mappings align according to system requirements
-  uint8_t * dev_pool_alignment = (uint8_t*)hint + sizeof(fps_t) + shared_portion_sz;
-  dev_pool_alignment -= (int)dev_pool_alignment % lcm_val;
-  hint = dev_pool_alignment - shared_portion_sz - LOCAL_GRANULARITY;
+  void * mapping_start = reserve_memory_for_allocator(shared_size, dev_size, dev_granularity);
 
   // Make mapping for local portion of allocator (aligned at end of page)
-  void * mapping_start = mmap(hint, LOCAL_GRANULARITY, PROT_READ | PROT_WRITE,
+  void * local_mapping = mmap(mapping_start, LOCAL_GRANULARITY, PROT_READ | PROT_WRITE,
     MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-
-  // TODO: Learn more about page tables and tweak this guy
-  while(mapping_start == MAP_FAILED && hint < 0x7f0000000000) {
-    int err = errno;
-    hint += 0x100000000;
-    mapping_start = mmap(hint, LOCAL_GRANULARITY, PROT_READ | PROT_WRITE,
-        MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-  }
-  if (mapping_start == MAP_FAILED) {
+  if (local_mapping == MAP_FAILED) {
     printf("failed to create local portion\n");
     handle_error("mmap");
   }
 
-  // Get pointer to alloc, which won't be page aligned, but straddling different mappings
-  struct hma_allocator * alloc = mapping_start + LOCAL_GRANULARITY - sizeof(fps_t);
-  populate_local_fn_pointers(alloc, device_type << 12 | strategy);
-
   // Create shared memory block (requested size )
-  int id = shmget(IPC_PRIVATE, shared_portion_sz, 0640);
+  int id = shmget(IPC_PRIVATE, shared_size, 0640);
   if (id == -1) {
     // TODO: More robust error checking
     return NULL;
@@ -182,12 +190,16 @@ struct hma_allocator * create_shared_allocator(
   //printf("Allocator id: %d\n", id);
 
   // Construct shared portion of allocator
-  if (shmat(id, (uint8_t*)mapping_start + LOCAL_GRANULARITY, 0) == MAP_FAILED) {
+  if (shmat(id, (uint8_t*)mapping_start + LOCAL_GRANULARITY, SHM_REMAP) == MAP_FAILED) {
     printf("create_shared_allocator failed on creation of shared portion\n");
     handle_error("shmat");
   }
+  
+  // Get pointer to alloc, which won't be page aligned, but straddling different mappings
+  struct hma_allocator * alloc = mapping_start + LOCAL_GRANULARITY - sizeof(fps_t);
 
-  // Previous pointer should now work in shared partition
+  // Populate with initial data
+  populate_local_fn_pointers(alloc, device_type << 12 | strategy);
   alloc->shmem_id = id;
   alloc->strategy = strategy;
   alloc->device_type = device_type;
@@ -197,7 +209,8 @@ struct hma_allocator * create_shared_allocator(
 
   // TODO: shmctl to set permissions and such
 
-  // Give back base allocator, straddling local and shared memory mappings
+  // Give back base allocator, straddling local and shared memory mappings, and a currently unusable
+  // mapping at the end for device memory
   return alloc;
 }
 
@@ -213,16 +226,13 @@ struct hma_allocator * remap_shared_allocator(int shmem_id)
   }
   hma_allocator_t * temp = shared_portion - sizeof(fps_t);
 
-  // TODO: Modify specs for individual remap to use a PROT_NONE mapping spanning local, shared, and
-  //       device mappings, then munmap unaligned portions, and then overwrite desired ranges with
-  //       MAP_FIXED and SHM_REMAP (latter isn't posix portable)
   // Lookup allocator's remap function and let it bootstrap itself and any memory pool
   int lookup_ind = temp->strategy * NUM_DEV_TYPES + temp->device_type;
   struct hma_allocator * alloc = (remap_fps[lookup_ind])(temp);
 
   // Map in local portion
   void * local = mmap((uint8_t*)alloc + sizeof(fps_t) - LOCAL_GRANULARITY, LOCAL_GRANULARITY,
-    PROT_READ | PROT_WRITE, MAP_FIXED_NOREPLACE | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   if (local == MAP_FAILED) {
     printf("remap_shared_allocator failed on creation of local portion\n");
     handle_error("mmap");
@@ -240,6 +250,30 @@ void unmap_shared_allocator(struct hma_allocator * alloc)
   // Lookup allocator's unmap function and let it unmap itself and associated memory pool
   int lookup_ind = alloc->strategy * NUM_DEV_TYPES + alloc->device_type;
   (unmap_fps[lookup_ind])(alloc);   // TODO: Add unmap calls to the fps_t struct
+
+  // Unmap self, and destroy segment, if this is the last one
+  struct shmid_ds buf;
+  if(shmctl(alloc->shmem_id, IPC_STAT, &buf) == -1) {
+    printf("Destruction failed on fetching segment info\n");
+    //RMW_SET_ERROR_MSG("Error reading info about shared StaticPoolAllocator");
+    //return RMW_RET_ERROR;
+    return;
+  }
+  if(buf.shm_cpid == getpid()) {
+    printf("Marking segment fo removal\n");
+    if(shmctl(alloc->shmem_id, IPC_RMID, NULL) == -1) {
+        printf("Destruction failed on marking segment for removal\n");
+        //RMW_SET_ERROR_MSG("can't mark shared StaticPoolAllocator for deletion");
+        //return RMW_RET_ERROR;
+        return;
+    }
+  }
+  void * shared_portion = (void*)((uint8_t*)alloc + sizeof(fps_t));
+  int ret = shmdt(shared_portion);
+  if(ret) {
+    printf("unmap_shared_allocator, failed to detach\n");
+    handle_error("shmdt");
+  }
 
   if(munmap((uint8_t*)alloc + sizeof(fps_t) - LOCAL_GRANULARITY, LOCAL_GRANULARITY)) {
     printf("failed to detach local portion of allocator\n");

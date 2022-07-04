@@ -57,6 +57,19 @@ cuda_ringbuf_allocator_t * create_cuda_ringbuf_allocator(size_t item_size, size_
   size_t remainder = rough_size % gran;
   size_t pool_size = (remainder == 0) ? rough_size : rough_size + gran - remainder;
 
+  struct cuda_ringbuf_allocator * alloc = (struct cuda_ringbuf_allocator *)create_shared_allocator(
+    sizeof(struct cuda_ringbuf_allocator) + sizeof(atomic_int) * ring_size, pool_size,
+    gran, ALLOC_RING, CUDA, 0);
+
+  struct shmid_ds buf;
+  if(shmctl(alloc->shmem_id, IPC_STAT, &buf) == -1) {
+    printf("Destruction failed on fetching segment info\n");
+    //RMW_SET_ERROR_MSG("Error reading info about shared StaticPoolAllocator");
+    //return RMW_RET_ERROR;
+    return;
+  }
+  void * dev_boundary = (uint8_t*)alloc + sizeof(fps_t) + buf.shm_segsz;
+
   CUmemGenericAllocationHandle original_handle;
   CHECK_DRV(cuMemCreate(&original_handle, pool_size, &props, device));
 
@@ -67,13 +80,20 @@ cuda_ringbuf_allocator_t * create_cuda_ringbuf_allocator(size_t item_size, size_
       (void *)&ipc_handle, original_handle,
       CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR, 0));
 
-  // Create CUDA allocation and remap self
+  // Create CUDA allocation over the empty 3rd mapping returned by create_shared_allocator
   CUdeviceptr d_addr;
-  CHECK_DRV(cuMemAddressReserve(&d_addr,
-    CUDA_RINGBUF_ALLOCATION_SIZE,
-    lcm(SHARED_GRANULARITY, gran), 0, 0ULL));
+  CUresult res = cuMemAddressReserve(&d_addr,
+    pool_size,
+    lcm(SHARED_GRANULARITY, gran),
+    (CUdeviceptr)(uintptr_t)dev_boundary, 0ULL);
+  if (res != CUDA_SUCCESS) {
+    res = cuMemAddressReserve(&d_addr,
+      pool_size,
+      lcm(SHARED_GRANULARITY, gran),
+      0, 0ULL);
+  }
 
-  // cuMemMap (offset set to allocator_sz when allowed to be non-zero)
+  // cuMemMap
   CHECK_DRV(cuMemMap(d_addr, pool_size, 0, original_handle, 0));
 
   // cuMemSetAccess
@@ -86,20 +106,13 @@ cuda_ringbuf_allocator_t * create_cuda_ringbuf_allocator(size_t item_size, size_
   // Free handle. Memory will stay valid as long as it is mapped
   CHECK_DRV(cuMemRelease(original_handle));
 
-  struct cuda_ringbuf_allocator * alloc = (struct cuda_ringbuf_allocator *)create_shared_allocator(
-    (void *)(uintptr_t)d_addr - SHARED_GRANULARITY - sizeof(fps_t),
-    sizeof(struct cuda_ringbuf_allocator) + sizeof(atomic_int) * ring_size,
-    gran, ALLOC_RING, CUDA, 0);
-
   // Construct strategy
   alloc->count = 0;
   alloc->rear_it = 0;
   alloc->item_size = item_size;
   alloc->ring_size = ring_size;   // TODO: Expand to fill max a page aligned mapping can accommodate
   alloc->ipc_handle = ipc_handle;
-  alloc->pool_offset = sizeof(struct cuda_ringbuf_allocator) - sizeof(fps_t) +
-    sizeof(atomic_int) * ring_size;
-  alloc->pool_offset += (SHARED_GRANULARITY - alloc->pool_offset % SHARED_GRANULARITY) + sizeof(fps_t);
+  alloc->pool_offset = (uint8_t*)(uintptr_t)d_addr - (uint8_t*)alloc;
   return alloc;
 }
 
@@ -187,13 +200,55 @@ void cuda_ringbuf_copy(struct hma_allocator * dest_alloc, void * there, void * h
 struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp)
 {
   struct cuda_ringbuf_allocator * cuda_alloc = (struct cuda_ringbuf_allocator *)temp;
-  size_t pool_size = cuda_alloc->item_size * cuda_alloc->ring_size;
+
+  CUmemAllocationProp props = {};
+  props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
+  props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+  props.location.id = 0;
+  props.requestedHandleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
+  size_t gran;
+  CHECK_DRV(cuMemGetAllocationGranularity(&gran, &props, CU_MEM_ALLOC_GRANULARITY_MINIMUM));
+
+  size_t rough_size = cuda_alloc->item_size * cuda_alloc->ring_size;
+  size_t remainder = rough_size % gran;
+  size_t pool_size = (remainder == 0) ? rough_size : rough_size + gran - remainder;
+
+  struct shmid_ds buf;
+  if(shmctl(cuda_alloc->shmem_id, IPC_STAT, &buf) == -1) {
+    printf("Remap failed on fetching segment info\n");
+    //RMW_SET_ERROR_MSG("Remap failed on fetching segment info");
+    //return RMW_RET_ERROR;
+    return NULL;
+  }
+
+  // Reserve memory range to remap into
+  void * mapping = reserve_memory_for_allocator(buf.shm_segsz, pool_size, gran);
+  if (mapping == MAP_FAILED) {
+    return NULL;
+  }
+
+  // Map in shared portion of allocator
+  void * shared_mapping = shmat(temp->shmem_id, mapping + LOCAL_GRANULARITY, 0);
+  if (shared_mapping == MAP_FAILED) {
+    printf("example_remap failed on creation of shared portion\n");
+    handle_error("shmat");
+  }
+
+  // TODO: Add requirement to allocator spec to define function to get device granularity, possibly
+  //       storing the value in hma_allocator. Then everything above could be moved to
+  //       remap_shared_allocator and this function only interacts with device memory
+
+  // Get pointer to remapped allocator
+  cuda_alloc = shared_mapping - sizeof(fps_t);
+
+  // Calculate where device mapping starts
+  void * dev_boundary = (uint8_t*)cuda_alloc + sizeof(fps_t) + buf.shm_segsz;
 
   // Get shareable handle
   CUmemGenericAllocationHandle handle;
   CHECK_DRV(
     cuMemImportFromShareableHandle(
-      &handle, &(cuda_alloc->ipc_handle),
+      &handle, (void *)(uintptr_t)(cuda_alloc->ipc_handle),
       CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR));
 
   // Create CUDA allocation and remap self
@@ -239,35 +294,9 @@ void cuda_ringbuf_unmap(struct hma_allocator * alloc)
   size_t gran;
   CHECK_DRV(cuMemGetAllocationGranularity(&gran, &props, CU_MEM_ALLOC_GRANULARITY_MINIMUM));
 
-  void * dev_mem = (uint8_t*)alloc + sizeof(fps_t) + sizeof(cuda_ringbuf_allocator_t) + sizeof(atomic_int)*cuda_alloc->ring_size;
-  dev_mem += SHARED_GRANULARITY - (uint)dev_mem % SHARED_GRANULARITY;
-
-  CUdeviceptr reservation = (CUdeviceptr)(uintptr_t)dev_mem;
+  CUdeviceptr reservation = (CUdeviceptr)(uintptr_t)((uint8_t*)alloc + cuda_alloc->pool_offset);
   CHECK_DRV(cuMemUnmap(reservation, CUDA_RINGBUF_ALLOCATION_SIZE));
   CHECK_DRV(cuMemAddressFree(reservation, CUDA_RINGBUF_ALLOCATION_SIZE));
-
-  struct shmid_ds buf;
-  if(shmctl(alloc->shmem_id, IPC_STAT, &buf) == -1) {
-    printf("Destruction failed on fetching segment info\n");
-    //RMW_SET_ERROR_MSG("Error reading info about shared StaticPoolAllocator");
-    //return RMW_RET_ERROR;
-    return;
-  }
-  if(buf.shm_cpid == getpid()) {
-    printf("Marking segment fo removal\n");
-    if(shmctl(alloc->shmem_id, IPC_RMID, NULL) == -1) {
-        printf("Destruction failed on marking segment for removal\n");
-        //RMW_SET_ERROR_MSG("can't mark shared StaticPoolAllocator for deletion");
-        //return RMW_RET_ERROR;
-        return;
-    }
-  }
-  void * shared_portion = (void*)((uint8_t*)alloc + sizeof(fps_t));
-  int ret = shmdt(shared_portion);
-  if(ret) {
-    printf("cpu_ringbuf_unmap, failed to detach\n");
-    handle_error("shmdt");
-  }
 }
 
 #ifdef __cplusplus

@@ -23,7 +23,7 @@ extern "C"
 struct cpu_ringbuf_allocator * create_cpu_ringbuf_allocator(size_t item_size, size_t ring_size)
 {
   struct cpu_ringbuf_allocator * alloc = (struct cpu_ringbuf_allocator *)create_shared_allocator(
-    sizeof(struct cpu_ringbuf_allocator) + (item_size + sizeof(atomic_int)) * ring_size,
+    NULL, sizeof(struct cpu_ringbuf_allocator) + (item_size + sizeof(atomic_int)) * ring_size,
     0, LOCAL_GRANULARITY, ALLOC_RING, CPU, 0);
 
   alloc->count = 0;
@@ -97,20 +97,77 @@ void cpu_ringbuf_deallocate(void * self, int offset)
 
 struct hma_allocator * cpu_ringbuf_remap(struct hma_allocator * temp)
 {
+  size_t dev_size = 0x80000;
+  void * dev_gran = 0x10000;
+
+  // Get size of shared memory
+  struct shmid_ds buf;
+  if(shmctl(temp->shmem_id, IPC_STAT, &buf) == -1) {
+    printf("cpu_ringbuf_remap failed on fetching segment info\n");
+    handle_error("shmctl");
+    return;
+  }
+
+  // Reserve a memory range for local and shared portions (no device pool needed)
+  void * mapping = reserve_memory_for_allocator(buf.shm_segsz, 0, LOCAL_GRANULARITY);
+  if (mapping == MAP_FAILED) {
+    return NULL;
+  }
+
+  // Map in local portion
+  void * local = mmap(mapping, LOCAL_GRANULARITY,
+    PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  if (local == MAP_FAILED) {
+    printf("cpu_ringbuf_remap failed on creation of local portion\n");
+    handle_error("mmap");
+  }
+
   // Map in shared portion of allocator
-  void * shared = shmat(temp->shmem_id, NULL, 0);
+  void * shared = shmat(temp->shmem_id, mapping + LOCAL_GRANULARITY, SHM_REMAP);
   if (shared == MAP_FAILED) {
     printf("cpu_ringbuf_remap failed on creation of shared portion\n");
     handle_error("shmat");
   }
 
+  hma_allocator_t * alloc = (hma_allocator_t*)(shared - sizeof(fps_t));
+  populate_local_fn_pointers(alloc, temp->device_type << 12 | temp->strategy);
+
   // Returned pointer is in unmapped memory
-  return (hma_allocator_t*)(shared - sizeof(fps_t));
+  return alloc;
 }
 
 void cpu_ringbuf_unmap(struct hma_allocator * alloc)
 {
-  // No device pool to remove, so just return
+  // Unmap self, and destroy segment, if this is the last one
+  struct shmid_ds buf;
+  if(shmctl(alloc->shmem_id, IPC_STAT, &buf) == -1) {
+    printf("Destruction failed on fetching segment info\n");
+    //RMW_SET_ERROR_MSG("Error reading info about shared StaticPoolAllocator");
+    //return RMW_RET_ERROR;
+    return;
+  }
+  if(buf.shm_cpid == getpid()) {
+    printf("Marking segment fo removal\n");
+    if(shmctl(alloc->shmem_id, IPC_RMID, NULL) == -1) {
+        printf("Destruction failed on marking segment for removal\n");
+        //RMW_SET_ERROR_MSG("can't mark shared StaticPoolAllocator for deletion");
+        //return RMW_RET_ERROR;
+        return;
+    }
+  }
+  void * shared_portion = (void*)((uint8_t*)alloc + sizeof(fps_t));
+  int ret = shmdt(shared_portion);
+  if(ret) {
+    printf("unmap_shared_allocator, failed to detach\n");
+    handle_error("shmdt");
+  }
+
+  // Remove local mapping
+  if(munmap((uint8_t*)alloc + sizeof(fps_t) - LOCAL_GRANULARITY, LOCAL_GRANULARITY)) {
+    printf("failed to detach local portion of allocator\n");
+    handle_error("munmap");
+  }
+
   return;
 }
 

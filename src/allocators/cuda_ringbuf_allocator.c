@@ -37,8 +37,6 @@ checkDrvError(CUresult res, const char * tok, const char * file, unsigned line)
 
 cuda_ringbuf_allocator_t * create_cuda_ringbuf_allocator(size_t item_size, size_t ring_size)
 {
-  void * hint = NULL;
-
   CUmemAllocationProp props = {};
   props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
   props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
@@ -57,9 +55,30 @@ cuda_ringbuf_allocator_t * create_cuda_ringbuf_allocator(size_t item_size, size_
   size_t remainder = rough_size % gran;
   size_t pool_size = (remainder == 0) ? rough_size : rough_size + gran - remainder;
 
+  size_t alloc_size = sizeof(struct cuda_ringbuf_allocator) + sizeof(atomic_int) * ring_size;
+  size_t shared_size = (alloc_size - sizeof(fps_t) + SHARED_GRANULARITY) -
+    (alloc_size - sizeof(fps_t)) % SHARED_GRANULARITY;
+  size_t alignment_factor = lcm(SHARED_GRANULARITY, gran);
+
+  // Reserve virtual memory range large enough to accommodate 3 appropriate aligned partitions
+  size_t reservation_size = LOCAL_GRANULARITY + shared_size + pool_size + alignment_factor;
+  reservation_size += gran - (reservation_size % gran);   // Round up
+  CUdeviceptr d_addr;
+  CHECK_DRV(cuMemAddressReserve(&d_addr,
+    reservation_size,
+    alignment_factor,
+    NULL, 0ULL));
+
+  // Find actual address we're going to construct the allocator at (must be aligned right)
+  void * hint = (void*)(uintptr_t)d_addr + alignment_factor -
+    ((long)(uintptr_t)d_addr + LOCAL_GRANULARITY + shared_size) % alignment_factor;
+
   struct cuda_ringbuf_allocator * alloc = (struct cuda_ringbuf_allocator *)create_shared_allocator(
-    sizeof(struct cuda_ringbuf_allocator) + sizeof(atomic_int) * ring_size, pool_size,
-    gran, ALLOC_RING, CUDA, 0);
+    hint, alloc_size, pool_size, gran, ALLOC_RING, CUDA, 0);
+
+  // Since CUDA insisted on reserving memory for us that probably isn't aligned right, keep a note
+  // of it for later
+  alloc->untyped.data = (void*)(uintptr_t)d_addr;
 
   struct shmid_ds buf;
   if(shmctl(alloc->shmem_id, IPC_STAT, &buf) == -1) {
@@ -68,7 +87,8 @@ cuda_ringbuf_allocator_t * create_cuda_ringbuf_allocator(size_t item_size, size_
     //return RMW_RET_ERROR;
     return;
   }
-  void * dev_boundary = (uint8_t*)alloc + sizeof(fps_t) + buf.shm_segsz;
+  CUdeviceptr dev_boundary = (CUdeviceptr)(uintptr_t)
+    ((uint8_t*)alloc + sizeof(fps_t) + buf.shm_segsz);
 
   CUmemGenericAllocationHandle original_handle;
   CHECK_DRV(cuMemCreate(&original_handle, pool_size, &props, device));
@@ -80,28 +100,15 @@ cuda_ringbuf_allocator_t * create_cuda_ringbuf_allocator(size_t item_size, size_
       (void *)&ipc_handle, original_handle,
       CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR, 0));
 
-  // Create CUDA allocation over the empty 3rd mapping returned by create_shared_allocator
-  CUdeviceptr d_addr;
-  CUresult res = cuMemAddressReserve(&d_addr,
-    pool_size,
-    lcm(SHARED_GRANULARITY, gran),
-    (CUdeviceptr)(uintptr_t)dev_boundary, 0ULL);
-  if (res != CUDA_SUCCESS) {
-    res = cuMemAddressReserve(&d_addr,
-      pool_size,
-      lcm(SHARED_GRANULARITY, gran),
-      0, 0ULL);
-  }
-
   // cuMemMap
-  CHECK_DRV(cuMemMap(d_addr, pool_size, 0, original_handle, 0));
+  CHECK_DRV(cuMemMap(dev_boundary, pool_size, 0, original_handle, 0));
 
   // cuMemSetAccess
   CUmemAccessDesc accessDesc;
   accessDesc.location.id = 0;
   accessDesc.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
   accessDesc.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
-  CHECK_DRV(cuMemSetAccess(d_addr, pool_size, &accessDesc, 1));
+  CHECK_DRV(cuMemSetAccess(dev_boundary, pool_size, &accessDesc, 1));
 
   // Free handle. Memory will stay valid as long as it is mapped
   CHECK_DRV(cuMemRelease(original_handle));
@@ -112,7 +119,7 @@ cuda_ringbuf_allocator_t * create_cuda_ringbuf_allocator(size_t item_size, size_
   alloc->item_size = item_size;
   alloc->ring_size = ring_size;   // TODO: Expand to fill max a page aligned mapping can accommodate
   alloc->ipc_handle = ipc_handle;
-  alloc->pool_offset = (uint8_t*)(uintptr_t)d_addr - (uint8_t*)alloc;
+  alloc->pool_offset = (uint8_t*)(uintptr_t)dev_boundary - (uint8_t*)alloc;
   return alloc;
 }
 
@@ -201,6 +208,7 @@ struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp)
 {
   struct cuda_ringbuf_allocator * cuda_alloc = (struct cuda_ringbuf_allocator *)temp;
 
+  // TODO: Add requirement to allocator spec to define function to get device granularity
   CUmemAllocationProp props = {};
   props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
   props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
@@ -212,6 +220,7 @@ struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp)
   size_t rough_size = cuda_alloc->item_size * cuda_alloc->ring_size;
   size_t remainder = rough_size % gran;
   size_t pool_size = (remainder == 0) ? rough_size : rough_size + gran - remainder;
+  size_t alignment_factor = lcm(SHARED_GRANULARITY, gran);
 
   struct shmid_ds buf;
   if(shmctl(cuda_alloc->shmem_id, IPC_STAT, &buf) == -1) {
@@ -221,28 +230,38 @@ struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp)
     return NULL;
   }
 
-  // Reserve memory range to remap into
-  void * mapping = reserve_memory_for_allocator(buf.shm_segsz, pool_size, gran);
-  if (mapping == MAP_FAILED) {
-    return NULL;
+  // Reserve virtual memory range large enough to accommodate 3 appropriate aligned partitions
+  size_t reservation_size = LOCAL_GRANULARITY + buf.shm_segsz + pool_size + alignment_factor;
+  reservation_size += gran - (reservation_size % gran);   // Round up
+  CUdeviceptr d_addr;
+  CHECK_DRV(cuMemAddressReserve(&d_addr,
+    reservation_size,
+    0,
+    NULL, 0ULL));
+
+  // Find actual address we're going to construct the allocator at (must be aligned right)
+  void * mapping = (void*)(uintptr_t)d_addr + alignment_factor -
+    ((long)(uintptr_t)d_addr + LOCAL_GRANULARITY + buf.shm_segsz) % alignment_factor;
+
+  // Map in local portion
+  void * local = mmap(mapping, LOCAL_GRANULARITY,
+    PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  if (local == MAP_FAILED) {
+    printf("cuda_ringbuf_remap failed on creation of local portion\n");
+    handle_error("mmap");
   }
 
   // Map in shared portion of allocator
-  void * shared_mapping = shmat(temp->shmem_id, mapping + LOCAL_GRANULARITY, 0);
+  void * shared_mapping = shmat(temp->shmem_id, mapping + LOCAL_GRANULARITY, SHM_REMAP);
   if (shared_mapping == MAP_FAILED) {
-    printf("example_remap failed on creation of shared portion\n");
+    printf("cuda_ringbuf_remap failed on creation of shared portion\n");
     handle_error("shmat");
   }
 
-  // TODO: Add requirement to allocator spec to define function to get device granularity, possibly
-  //       storing the value in hma_allocator. Then everything above could be moved to
-  //       remap_shared_allocator and this function only interacts with device memory
-
-  // Get pointer to remapped allocator
+  // Get pointer to remapped allocator, and populate local mapping
   cuda_alloc = shared_mapping - sizeof(fps_t);
-
-  // Calculate where device mapping starts
-  void * dev_boundary = (uint8_t*)cuda_alloc + sizeof(fps_t) + buf.shm_segsz;
+  populate_local_fn_pointers(cuda_alloc, temp->device_type << 12 | temp->strategy);
+  cuda_alloc->untyped.data = (void*)(uintptr_t)d_addr;
 
   // Get shareable handle
   CUmemGenericAllocationHandle handle;
@@ -251,28 +270,18 @@ struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp)
       &handle, (void *)(uintptr_t)(cuda_alloc->ipc_handle),
       CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR));
 
-  // Create CUDA allocation and remap self
-  CUdeviceptr d_addr;
-  CHECK_DRV(cuMemAddressReserve(&d_addr, CUDA_RINGBUF_ALLOCATION_SIZE, 0, 0, 0ULL));
+  // Calculate where device mapping starts
+  void * dev_boundary = (uint8_t*)shared_mapping + buf.shm_segsz;
 
-  // cuMemMap (with offset?)struct cpu_ringbuf_allocator * 
-  CHECK_DRV(cuMemMap(d_addr, pool_size, 0, handle, 0));
+  // cuMemMap
+  CHECK_DRV(cuMemMap((CUdeviceptr)(uintptr_t)dev_boundary, pool_size, 0, handle, 0));
 
   // cuMemSetAccess
   CUmemAccessDesc accessDesc;
   accessDesc.location.id = 0;
   accessDesc.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
   accessDesc.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
-  CHECK_DRV(cuMemSetAccess(d_addr, pool_size, &accessDesc, 1));
-
-  // Map in shared portion of allocator
-  size_t shared_sz = sizeof(cuda_ringbuf_allocator_t) + cuda_alloc->ring_size*sizeof(atomic_int);
-  shared_sz += SHARED_GRANULARITY - shared_sz % SHARED_GRANULARITY;
-  cuda_alloc = shmat(temp->shmem_id, (void *)(uintptr_t)d_addr - shared_sz, 0);
-  if (cuda_alloc == MAP_FAILED) {
-    printf("cuda_ringbuf_remap failed on creation of shared portion\n");
-    handle_error("shmat");
-  }
+  CHECK_DRV(cuMemSetAccess(dev_boundary, pool_size, &accessDesc, 1));
 
   // Free handle. Memory will stay valid as long as it is mapped
   CHECK_DRV(cuMemRelease(handle));
@@ -285,7 +294,18 @@ struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp)
 void cuda_ringbuf_unmap(struct hma_allocator * alloc)
 {  
   cuda_ringbuf_allocator_t * cuda_alloc = (cuda_ringbuf_allocator_t*)alloc;
-  
+  CUdeviceptr reservation = (CUdeviceptr)(uintptr_t)alloc->data;
+
+  // Get info on shared segment
+  struct shmid_ds buf;
+  if(shmctl(alloc->shmem_id, IPC_STAT, &buf) == -1) {
+    printf("Destruction failed on fetching segment info\n");
+    //RMW_SET_ERROR_MSG("Error reading info about shared StaticPoolAllocator");
+    //return RMW_RET_ERROR;
+    return;
+  }
+
+  // Calculate some numbers that'll help find out how big the CUDA reservation was
   CUmemAllocationProp props = {};
   props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
   props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
@@ -293,10 +313,42 @@ void cuda_ringbuf_unmap(struct hma_allocator * alloc)
   props.requestedHandleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
   size_t gran;
   CHECK_DRV(cuMemGetAllocationGranularity(&gran, &props, CU_MEM_ALLOC_GRANULARITY_MINIMUM));
+  size_t rough_size = cuda_alloc->item_size * cuda_alloc->ring_size;
+  size_t remainder = rough_size % gran;
+  size_t pool_size = (remainder == 0) ? rough_size : rough_size + gran - remainder;
+  size_t alignment_factor = lcm(SHARED_GRANULARITY, gran);
 
-  CUdeviceptr reservation = (CUdeviceptr)(uintptr_t)((uint8_t*)alloc + cuda_alloc->pool_offset);
-  CHECK_DRV(cuMemUnmap(reservation, CUDA_RINGBUF_ALLOCATION_SIZE));
-  CHECK_DRV(cuMemAddressFree(reservation, CUDA_RINGBUF_ALLOCATION_SIZE));
+  // Unmap device memory
+  CUdeviceptr dev_boundary = (CUdeviceptr)(uintptr_t)
+    ((uint8_t*)alloc + sizeof(fps_t) + buf.shm_segsz);
+  CHECK_DRV(cuMemUnmap(dev_boundary, pool_size));
+
+  // Unmap self, and destroy segment, if this is the last one
+  if(buf.shm_cpid == getpid()) {
+    printf("Marking segment fo removal\n");
+    if(shmctl(alloc->shmem_id, IPC_RMID, NULL) == -1) {
+        printf("Destruction failed on marking segment for removal\n");
+        //RMW_SET_ERROR_MSG("can't mark shared StaticPoolAllocator for deletion");
+        //return RMW_RET_ERROR;
+        return;
+    }
+  }
+  void * shared_portion = (void*)((uint8_t*)alloc + sizeof(fps_t));
+  int ret = shmdt(shared_portion);
+  if(ret) {
+    printf("unmap_shared_allocator, failed to detach\n");
+    handle_error("shmdt");
+  }
+
+  // Unmap local portion
+  if(munmap((uint8_t*)alloc + sizeof(fps_t) - LOCAL_GRANULARITY, LOCAL_GRANULARITY)) {
+    printf("failed to detach local portion of allocator\n");
+    handle_error("munmap");
+  }
+
+  size_t reservation_size = LOCAL_GRANULARITY + buf.shm_segsz + pool_size + alignment_factor;
+  reservation_size += gran - (reservation_size % gran);   // Round up
+  CHECK_DRV(cuMemAddressFree(reservation, reservation_size));
 }
 
 #ifdef __cplusplus

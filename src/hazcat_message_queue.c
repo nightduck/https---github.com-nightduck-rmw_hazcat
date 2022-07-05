@@ -317,7 +317,7 @@ hazcat_publish(rmw_publisher_t *pub, void *msg)
 
 
   // Release lock on shared file
-  struct flock fl = {F_UNLCK, SEEK_SET, 0, 0, 0};
+  fl.l_type = F_UNLCK;
   if (fcntl(((pub_sub_data_t *)pub->data)->mq->fd, F_SETLK, &fl) == -1)
   {
     RMW_SET_ERROR_MSG("Couldn't release read-lock on shared message queue");
@@ -425,7 +425,7 @@ hazcat_take(rmw_subscription_t *sub)
   ((pub_sub_data_t *)sub->data)->next_index = (i + 1) % mq->len;
 
   // Release lock on shared file
-  struct flock fl = {F_UNLCK, SEEK_SET, 0, 0, 0};
+  fl.l_type = F_UNLCK;
   if (fcntl(((pub_sub_data_t *)sub->data)->mq->fd, F_SETLK, &fl) == -1)
   {
     RMW_SET_ERROR_MSG("Couldn't release read-lock on shared message queue");

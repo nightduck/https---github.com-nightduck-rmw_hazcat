@@ -173,7 +173,7 @@ TEST(AllocatorTest, cuda_ringbuf_allocate_rw_test)
   unmap_shared_allocator((struct hma_allocator *)alloc);
 }
 
-TEST(AllocatorTest, cpu_ringbuf_share_deallocate_test)
+TEST(AllocatorTest, cuda_ringbuf_share_deallocate_test)
 {
   cuda_ringbuf_allocator_t * alloc = create_cuda_ringbuf_allocator(8, 3);
   int* ref_array = (int*)((uint8_t*)alloc + sizeof(cuda_ringbuf_allocator_t));
@@ -246,7 +246,7 @@ TEST(AllocatorTest, cpu_ringbuf_share_deallocate_test)
 
 // TODO: Test copy method when an allocator from a different domain is written
 
-TEST(AllocatorTest, cpu_ringbuf_remap_test)
+TEST(AllocatorTest, cuda_ringbuf_remap_test)
 {
   cuda_ringbuf_allocator_t * alloc = create_cuda_ringbuf_allocator(8, 3);
   int* ref_array = (int*)((uint8_t*)alloc + sizeof(cuda_ringbuf_allocator_t));
@@ -265,10 +265,9 @@ TEST(AllocatorTest, cpu_ringbuf_remap_test)
 
   EXPECT_NE((void*)alloc, (void*)alloc2);
 
-  // Contents of remapped allocator should be identical (local portion would differ across
-  // processes, but these are in same process)
+  // Contents of remapped allocator should be identical (local portion can differ)
   int sz = (sizeof(cuda_ringbuf_allocator_t) + sizeof(int) * 3)/sizeof(int);
-  for(int i = 0; i < sz; i++) {
+  for(int i = sizeof(fps_t); i < sz; i++) {
     EXPECT_EQ(((int*)alloc)[i], ((int*)alloc2)[i]);
   }
 

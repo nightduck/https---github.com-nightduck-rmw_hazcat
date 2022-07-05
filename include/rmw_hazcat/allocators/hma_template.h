@@ -65,7 +65,7 @@ extern "C"
   union {
     struct
     {
-      fps_t fps;
+      const fps_t fps;
       const int shmem_id;
       const uint16_t device_type;
       const uint16_t device_number;
@@ -83,6 +83,7 @@ typedef struct hma_allocator
   void (* copy_from)  (void *, void *, size_t);
   void (* copy_to)    (void *, void *, size_t);
   void (* copy)       (void *, void *, size_t, struct hma_allocator *);
+  void * data;   // Implementation specific stuff
 
   //----Boundary between local memory and shared memory mapping occurs here---
 
@@ -104,6 +105,7 @@ typedef struct function_pointers {
   void (* copy_from)  (void *, void *, size_t);
   void (* copy_to)    (void *, void *, size_t);
   void (* copy)       (void *, void *, size_t, hma_allocator_t *);
+  void * data;  // Implementation specific stuff, usually to accomodate finicky device memory
 } fps_t;
 
 // void * convert(
@@ -130,7 +132,7 @@ void * reserve_memory_for_allocator(size_t shared_size, size_t dev_size, size_t 
 // TODO: Update documentation
 // Don't call this outside this library
 struct hma_allocator * create_shared_allocator(
-  size_t alloc_size, size_t pool_size, size_t dev_granularity, uint16_t strategy,
+  void * hint, size_t alloc_size, size_t pool_size, size_t dev_granularity, uint16_t strategy,
   uint16_t device_type, uint8_t device_number);
 
 // TODO: Update documentation

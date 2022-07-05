@@ -9,7 +9,7 @@
 
 typedef struct node
 {
-  node_t* next;
+  struct node* next;
   int key;
   void* val;
 } node_t;

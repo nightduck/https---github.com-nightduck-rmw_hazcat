@@ -14,6 +14,7 @@
 
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
+#include "rmw_hazcat/hazcat_message_queue.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -56,8 +57,23 @@ rmw_create_publisher(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(qos_policies, NULL);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher_options, NULL);
 
-  RMW_SET_ERROR_MSG("rmw_create_publisher hasn't been implemented yet");
-  return NULL;
+  rmw_publisher_t * pub = rmw_publisher_allocate();
+  pub_sub_data_t * data = rmw_allocate(sizeof(pub_sub_data_t));
+
+  // Populate data->alloc with allocator specified (all other fields are set during registration)
+  data->alloc = (hma_allocator_t*)publisher_options->rmw_specific_publisher_payload;
+
+  pub->implementation_identifier = rmw_get_implementation_identifier();
+  pub->data = data;
+  pub->topic_name = rmw_allocate(strlen(topic_name));
+  pub->options = *publisher_options;
+  pub->can_loan_messages = true;
+
+  strcpy(pub->topic_name, topic_name);
+
+  hazcat_register_publisher(pub, qos_policies);
+
+  return pub;
 }
 
 rmw_ret_t
@@ -66,8 +82,18 @@ rmw_destroy_publisher(rmw_node_t * node, rmw_publisher_t * publisher)
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_ERROR);
 
-  RMW_SET_ERROR_MSG("rmw_destroy_publisher hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  // Remove publisher from it's message queue
+  rmw_ret_t ret = hazcat_unregister_publisher(publisher);
+  if (ret != RMW_RET_OK) {
+    return ret;
+  }
+
+  // Free all allocated memory associated with publisher
+  rmw_free(publisher->topic_name);
+  rmw_free(publisher->data);
+  rmw_publisher_free(publisher);
+
+  return RMW_RET_OK;
 }
 
 rmw_ret_t

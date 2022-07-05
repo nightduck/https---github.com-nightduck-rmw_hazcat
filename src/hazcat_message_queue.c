@@ -245,6 +245,9 @@ hazcat_register_subscription(rmw_subscription_t *sub, rmw_qos_profile_t *qos)
 
   mq_node_t *it = ((pub_sub_data_t *)sub->data)->mq;
 
+  // Set next index to look at, ignore any existing messages in queue
+  ((pub_sub_data_t *)sub->data)->next_index = it->elem->index;
+
   // TODO: Generic macros in case I want to change the type of this thing.
   //       Eg (typeof(mq->pub_count))~(typeof(mq->pub_count))0
   if (it->elem->sub_count < UINT16_MAX)
@@ -344,7 +347,7 @@ hazcat_take(rmw_subscription_t *sub)
   }
 
   hma_allocator_t *alloc = ((pub_sub_data_t *)sub->data)->alloc;
-  message_queue_t *mq = ((pub_sub_data_t *)sub->data)->mq;
+  message_queue_t *mq = ((pub_sub_data_t *)sub->data)->mq->elem;
 
   // Find next relevant message (skip over stale messages if we missed them)
   int i = ((pub_sub_data_t *)sub->data)->next_index;

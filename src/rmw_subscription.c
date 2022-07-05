@@ -15,6 +15,7 @@
 #include "rmw/error_handling.h"
 #include "rmw/event.h"
 #include "rmw/rmw.h"
+#include "rmw_hazcat/hazcat_message_queue.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -57,8 +58,23 @@ rmw_create_subscription(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(qos_policies, NULL);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription_options, NULL);
 
-  RMW_SET_ERROR_MSG("rmw_init_subscription_allocation hasn't been implemented yet");
-  return NULL;
+  rmw_subscription_t * sub = rmw_subscription_allocate();
+  pub_sub_data_t * data = rmw_allocate(sizeof(pub_sub_data_t));
+
+  // Populate data->alloc with allocator specified (all other fields are set during registration)
+  data->alloc = (hma_allocator_t*)subscription_options->rmw_specific_subscription_payload;
+
+  sub->implementation_identifier = rmw_get_implementation_identifier();
+  sub->data = data;
+  sub->topic_name = rmw_allocate(strlen(topic_name));
+  sub->options = *subscription_options;
+  sub->can_loan_messages = true;
+
+  strcpy(sub->topic_name, topic_name);
+
+  hazcat_register_publisher(sub, qos_policies);
+
+  return sub;
 }
 
 rmw_ret_t
@@ -69,8 +85,18 @@ rmw_destroy_subscription(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription, RMW_RET_ERROR);
 
-  RMW_SET_ERROR_MSG("rmw_destroy_subscription hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  // Remove publisher from it's message queue
+  rmw_ret_t ret = hazcat_unregister_subscription(subscription);
+  if (ret != RMW_RET_OK) {
+    return ret;
+  }
+
+  // Free all allocated memory associated with publisher
+  rmw_free(subscription->topic_name);
+  rmw_free(subscription->data);
+  rmw_publisher_free(subscription);
+
+  return RMW_RET_OK;
 }
 
 rmw_ret_t

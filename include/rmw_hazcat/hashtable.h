@@ -29,7 +29,7 @@ hashtable_t* hashtable_init(size_t len)
   table->len = len;
   table->count = 0;
   table->table = (node_t*)((uint8_t*)table + sizeof(hashtable_t));
-  for (int i = 0; i < len; i++)
+  for (size_t i = 0; i < len; i++)
   {
     table->table[i].next = &table->table[i];  // Terminating nodes point at themselvess
     table->table[i].val = NULL;

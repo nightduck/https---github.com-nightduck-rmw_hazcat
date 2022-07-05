@@ -53,7 +53,7 @@ typedef struct entry
 
 typedef struct message_queue
 {
-  atomic_int index;
+  atomic_int index;   // Next free entry to publish into
   size_t len;
   size_t num_domains;
 
@@ -108,12 +108,12 @@ inline void lock_domain(atomic_uint_fast32_t *lock, int bit_mask)
 
 inline ref_bits_t *get_ref_bits(message_queue_t *mq, int i)
 {
-  return (uint8_t *)mq + sizeof(message_queue_t) + i * sizeof(ref_bits_t);
+  return (ref_bits_t*)((uint8_t *)mq + sizeof(message_queue_t) + i * sizeof(ref_bits_t));
 }
 
 inline entry_t *get_entry(message_queue_t *mq, int domain, int i)
 {
-  return (uint8_t *)mq + sizeof(message_queue_t) + mq->len * sizeof(ref_bits_t) + domain * mq->len * sizeof(entry_t) + i * sizeof(entry_t);
+  return (entry_t*)((uint8_t *)mq + sizeof(message_queue_t) + mq->len * sizeof(ref_bits_t) + domain * mq->len * sizeof(entry_t) + i * sizeof(entry_t));
 }
 
 // Misc initialization stuff.

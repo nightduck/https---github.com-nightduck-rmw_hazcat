@@ -16,11 +16,15 @@
 #define MESSAGE_QUEUE_H
 
 #ifdef __cplusplus
+# include <atomic>
+# define _Atomic(X) std::atomic< X >
+using namespace std;
 extern "C"
 {
+#else
+# include <stdatomic.h>
 #endif
 
-#include <stdatomic.h>
 #include <stdint.h>
 #include "rmw/allocators.h"
 #include "rmw/error_handling.h"
@@ -98,23 +102,6 @@ typedef struct sub_options
 {
   int qos_history;
 } sub_opts_t;
-
-inline void lock_domain(atomic_uint_fast32_t *lock, int bit_mask)
-{
-  atomic_uint_fast32_t val = *lock;
-  while (!atomic_compare_exchange_weak(lock, &val, bit_mask & val))
-    ;
-}
-
-inline ref_bits_t *get_ref_bits(message_queue_t *mq, int i)
-{
-  return (ref_bits_t*)((uint8_t *)mq + sizeof(message_queue_t) + i * sizeof(ref_bits_t));
-}
-
-inline entry_t *get_entry(message_queue_t *mq, int domain, int i)
-{
-  return (entry_t*)((uint8_t *)mq + sizeof(message_queue_t) + mq->len * sizeof(ref_bits_t) + domain * mq->len * sizeof(entry_t) + i * sizeof(entry_t));
-}
 
 // Misc initialization stuff.
 rmw_ret_t

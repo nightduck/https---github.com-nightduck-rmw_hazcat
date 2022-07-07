@@ -32,7 +32,7 @@ const int dir_offset = 21;
 
 mq_node_t mq_list = {NULL, NULL, -1, NULL};
 
-// Hash table linking all known allocators for this process
+// Hash table linking all known allocators for this process (will be shared among message queues)
 hashtable_t * ht;
 
 rmw_ret_t
@@ -50,6 +50,22 @@ rmw_ret_t
 hazcat_fini() {
   hashtable_fini(ht);
   return RMW_RET_OK;
+}
+
+inline void lock_domain(atomic_uint_fast32_t *lock, int bit_mask)
+{
+  atomic_uint_fast32_t val = atomic_load(lock);
+  while (!atomic_compare_exchange_weak(lock, &val, bit_mask & val));
+}
+
+inline ref_bits_t *get_ref_bits(message_queue_t *mq, int i)
+{
+  return (ref_bits_t*)((uint8_t *)mq + sizeof(message_queue_t) + i * sizeof(ref_bits_t));
+}
+
+inline entry_t *get_entry(message_queue_t *mq, int domain, int i)
+{
+  return (entry_t*)((uint8_t *)mq + sizeof(message_queue_t) + mq->len * sizeof(ref_bits_t) + domain * mq->len * sizeof(entry_t) + i * sizeof(entry_t));
 }
 
 // Convenient utility method since 95% of registering subscription is same as registering publisher

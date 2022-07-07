@@ -126,6 +126,13 @@ if(BUILD_TESTING)
     test_msgs std_msgs
     rcutils
   )
+
+  ament_add_gtest(message_queue_test test/hazcat_message_queue_test.cpp)
+  target_link_libraries(message_queue_test hazcat_message_queue hazcat_allocators rmw_hazcat)
+  ament_target_dependencies(message_queue_test
+    test_msgs std_msgs
+    rcutils
+  )
 endif()
 
 ament_package()

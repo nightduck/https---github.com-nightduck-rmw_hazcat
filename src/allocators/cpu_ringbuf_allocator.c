@@ -20,10 +20,10 @@ extern "C"
 #include <stdatomic.h>
 #include "rmw_hazcat/allocators/cpu_ringbuf_allocator.h"
 
-struct cpu_ringbuf_allocator * create_cpu_ringbuf_allocator(size_t item_size, size_t ring_size)
+cpu_ringbuf_allocator_t * create_cpu_ringbuf_allocator(size_t item_size, size_t ring_size)
 {
-  struct cpu_ringbuf_allocator * alloc = (struct cpu_ringbuf_allocator *)create_shared_allocator(
-    NULL, sizeof(struct cpu_ringbuf_allocator) + (item_size + sizeof(atomic_int)) * ring_size,
+  cpu_ringbuf_allocator_t * alloc = (cpu_ringbuf_allocator_t *)create_shared_allocator(
+    NULL, sizeof(cpu_ringbuf_allocator_t) + (item_size + sizeof(atomic_int)) * ring_size,
     0, LOCAL_GRANULARITY, ALLOC_RING, CPU, 0);
 
   alloc->count = 0;
@@ -36,7 +36,7 @@ struct cpu_ringbuf_allocator * create_cpu_ringbuf_allocator(size_t item_size, si
 
 int cpu_ringbuf_allocate(void * self, size_t size)
 {
-  struct cpu_ringbuf_allocator * s = (struct cpu_ringbuf_allocator *)self;
+  cpu_ringbuf_allocator_t * s = (cpu_ringbuf_allocator_t *)self;
   if (s->count == s->ring_size) {
     // Allocator full
     return -1;
@@ -44,7 +44,7 @@ int cpu_ringbuf_allocate(void * self, size_t size)
   int forward_it = (s->rear_it + s->count) % s->ring_size;
 
   // Give address relative to allocator, taking into account the 4 bytes in front for reference counter
-  int ret = sizeof(struct cpu_ringbuf_allocator) + sizeof(atomic_int) + (s->item_size + sizeof(atomic_int)) * forward_it;
+  int ret = sizeof(cpu_ringbuf_allocator_t) + sizeof(atomic_int) + (s->item_size + sizeof(atomic_int)) * forward_it;
 
   // Set reference counter to 1
   atomic_int * ref_count = (atomic_int*)(self + ret - sizeof(atomic_int));
@@ -63,7 +63,7 @@ void cpu_ringbuf_share(void * self, int offset) {
 
 void cpu_ringbuf_deallocate(void * self, int offset)
 {
-  struct cpu_ringbuf_allocator * s = (struct cpu_ringbuf_allocator *)self;
+  cpu_ringbuf_allocator_t * s = (cpu_ringbuf_allocator_t *)self;
   if (s->count == 0) {
     return;       // Allocator empty, nothing to deallocate
   }
@@ -75,7 +75,7 @@ void cpu_ringbuf_deallocate(void * self, int offset)
     return;
   }
 
-  int entry = (offset - sizeof(struct cpu_ringbuf_allocator)) /
+  int entry = (offset - sizeof(cpu_ringbuf_allocator_t)) /
     (s->item_size + sizeof(atomic_int));
 
   // Do math with imaginary overflow indices so forward_it >= entry >= rear_it

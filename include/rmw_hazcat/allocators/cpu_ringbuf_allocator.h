@@ -25,7 +25,7 @@ extern "C"
 #include "hma_template.h"
 
 
-struct cpu_ringbuf_allocator
+typedef struct cpu_ringbuf_allocator
 {
   union {
     struct
@@ -43,9 +43,9 @@ struct cpu_ringbuf_allocator
   int rear_it;
   int item_size;
   int ring_size;
-};
+} cpu_ringbuf_allocator_t;
 
-struct cpu_ringbuf_allocator * create_cpu_ringbuf_allocator(size_t item_size, size_t ring_size);
+cpu_ringbuf_allocator_t * create_cpu_ringbuf_allocator(size_t item_size, size_t ring_size);
 
 int cpu_ringbuf_allocate(void * self, size_t size);
 
@@ -53,9 +53,9 @@ void cpu_ringbuf_share(void * self, int offset);
 
 void cpu_ringbuf_deallocate(void * self, int offset);
 
-struct hma_allocator * cpu_ringbuf_remap(struct hma_allocator * temp);
+hma_allocator_t * cpu_ringbuf_remap(hma_allocator_t * temp);
 
-void cpu_ringbuf_unmap(struct hma_allocator * alloc);
+void cpu_ringbuf_unmap(hma_allocator_t * alloc);
 
 #ifdef __cplusplus
 }

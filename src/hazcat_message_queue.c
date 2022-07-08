@@ -27,8 +27,8 @@ extern "C"
 #include "rmw_hazcat/hashtable.h"
 #include "rmw_hazcat/hazcat_message_queue.h"
 
-char shmem_file[NAME_MAX] = "/dev/shm/ros2_hazcat/";
-const int dir_offset = 21;
+char shmem_file[NAME_MAX] = "/ros2_hazcat.";
+const int dir_offset = 13;
 
 mq_node_t mq_list = {NULL, NULL, -1, NULL};
 
@@ -75,7 +75,13 @@ hazcat_register_pub_or_sub(pub_sub_data_t *data, const char *topic_name, rmw_qos
   // Register associated allocator, so we can lookup address given shared mem id
   hashtable_insert(ht, data->alloc->shmem_id, data->alloc);
 
-  strcpy(shmem_file + 21, topic_name);
+  // Add header, and replace all slashes with periods (because no subdirs in /dev/shm)
+  strcpy(shmem_file + dir_offset, topic_name);
+  char *current_pos = shmem_file + dir_offset - 1;  // Set to index of first period (will overwrite)
+  while(current_pos) {
+    *current_pos = '.';
+    current_pos = strchr(current_pos, "/");
+  }
   message_queue_t *mq;
 
   // Check message queue has been opened in this process yet. If not, do so and map it
@@ -87,11 +93,11 @@ hazcat_register_pub_or_sub(pub_sub_data_t *data, const char *topic_name, rmw_qos
   if (it == NULL)
   {
     // Make it through the list without finding a match, so it hasn't been open here yet
-    strcpy(shmem_file + dir_offset, topic_name);
-    int fd = shm_open(shmem_file, O_CREAT | O_RDWR, 0);
+    int fd = shm_open(shmem_file, O_CREAT | O_RDWR, 0600);
     if (fd == -1)
     {
       RMW_SET_ERROR_MSG("Couldn't open shared message queue");
+      printf("Couldn't open shared message queue, %s : %d\n", shmem_file, errno);
       return RMW_RET_ERROR;
     }
 

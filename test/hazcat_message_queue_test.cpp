@@ -71,11 +71,13 @@ TEST(MessageQueueTest, creation_test) {
   sub->options = sub_opts;
   sub->can_loan_messages = true;
 
+  ASSERT_EQ(hazcat_init(), RMW_RET_OK);
+
   ASSERT_EQ(hazcat_register_publisher(pub, &pub_qos), RMW_RET_OK);
 
   mq_node_t * mq_node = pub_data->mq;
   message_queue_t * mq = mq_node->elem;
-  ASSERT_STREQ(mq_node->file_name, "/dev/shm/ros2_hazcat/test");
+  ASSERT_STREQ(mq_node->file_name, "/ros2_hazcat.test");
   ASSERT_GT(mq_node->fd, 0);
 
   ASSERT_EQ(mq->index, 0);
@@ -118,13 +120,18 @@ TEST(MessageQueueTest, creation_test) {
   // Reopen file
   char shmem_file[128] = "/dev/shm/ros2_hazcat/";
   strcpy(shmem_file + 21, pub->topic_name);
-  int fd = shm_open(mq_node->file_name, O_CREAT | O_RDWR, 0);
+  int fd = shm_open(mq_node->file_name, O_CREAT | O_RDWR, 0777);
   ASSERT_NE(fd, -1);
 
   // File should be empty, confirming it was deleted before
   struct stat st;
   fstat(fd, &st);
   ASSERT_EQ(st.st_size, 0);
+
+  // Now remove it again
+  ASSERT_EQ(shm_unlink(mq_node->file_name), 0);
+
+  ASSERT_EQ(hazcat_fini(), RMW_RET_OK);
 
   rmw_publisher_free(pub);
   rmw_subscription_free(sub);

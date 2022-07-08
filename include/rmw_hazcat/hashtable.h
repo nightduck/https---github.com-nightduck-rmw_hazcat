@@ -31,7 +31,7 @@ hashtable_t* hashtable_init(size_t len)
   table->table = (node_t*)((uint8_t*)table + sizeof(hashtable_t));
   for (size_t i = 0; i < len; i++)
   {
-    table->table[i].next = &table->table[i];  // Terminating nodes point at themselvess
+    table->table[i].next = NULL;
     table->table[i].val = NULL;
   }
   return table;
@@ -47,6 +47,9 @@ void hashtable_insert(hashtable_t* ht, int key, void* val)
   if (ht->count >= ht->len)
   {
     return;  // Table full
+  }
+  if (val == NULL) {
+    return; // Can't insert null pointers
   }
 
   // Case 1 - Hash is free: both loops skipped, tail and it equal, so only last 4 lines matter
@@ -64,12 +67,14 @@ void hashtable_insert(hashtable_t* ht, int key, void* val)
     it = it->next;
   }
 
+  // We found another entry with the same key. Update value but leave hashtable unchanged
   if (it->key == key) {
-    // Update value, but leave hashtable structure unchanged
     it->val = val;
     return;
   }
 
+  // At this point, it is either at it's initial value, which is unoccupied, or at the end of a
+  // linked list, which is occupied. Assume the latter and iterate over array for empty spot
   node_t* tail = it;
   while (it->val != NULL)                     // Now find a free index to link to
   {
@@ -77,7 +82,8 @@ void hashtable_insert(hashtable_t* ht, int key, void* val)
     it = ht->table + (it - ht->table) % ht->len;  // Wrap around
   }
 
-  tail->next = it;
+  // Found an empty entry, so populate it
+  tail->next = it;  // If Case 1, tail = it, and this line does nothing
   it->next = NULL;
   it->key = key;
   it->val = val;

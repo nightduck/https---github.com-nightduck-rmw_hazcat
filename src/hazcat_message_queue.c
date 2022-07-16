@@ -80,7 +80,7 @@ hazcat_register_pub_or_sub(pub_sub_data_t *data, const char *topic_name, rmw_qos
   char *current_pos = shmem_file + dir_offset - 1;  // Set to index of first period (will overwrite)
   while(current_pos) {
     *current_pos = '.';
-    current_pos = strchr(current_pos, "/");
+    current_pos = strchr(current_pos, '/');
   }
   message_queue_t *mq;
 

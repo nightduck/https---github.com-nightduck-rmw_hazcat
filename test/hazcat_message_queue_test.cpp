@@ -17,6 +17,7 @@
 
 #include "rmw_hazcat/allocators/cpu_ringbuf_allocator.h"
 #include "rmw_hazcat/hazcat_message_queue.h"
+#include "rmw_hazcat/hashtable.h"
 
 #include <gtest/gtest.h>
 
@@ -34,7 +35,120 @@ uint8_t deref(uint8_t * ptr)
 }
 
 TEST(MessageQueueTest, hashtable_test) {
+std::cout << "creation test" << std::endl;
+  // Creation test
+  hashtable_t * ht = hashtable_init(8);
+  ASSERT_EQ(ht->len, 8);
+  ASSERT_EQ(ht->count, 0);
+  ASSERT_EQ((uint8_t*)ht->table, (uint8_t*)ht + sizeof(hashtable_t));
+  for(int i = 0; i < 8; i++) {
+    ASSERT_EQ(ht->table[i].next, nullptr);
+    ASSERT_EQ(ht->table[i].val, nullptr);
+  }
 
+  // Attempt retrival of non-existant element
+std::cout << "non-existant retrival test" << std::endl;
+  ASSERT_EQ(hashtable_get(ht, 42), nullptr);
+
+  // Ordinary insertion and removal test
+std::cout << "insertion test" << std::endl;
+  hashtable_insert(ht, 42, (void*)0x42);
+  ASSERT_EQ(ht->table[HASH(42,8)].val, (void*)0x42);
+  ASSERT_EQ(ht->table[HASH(42,8)].key, 42);
+  ASSERT_EQ(ht->table[HASH(42,8)].next, nullptr);
+  ASSERT_EQ(hashtable_get(ht, 42), (void*)0x42);
+  hashtable_remove(ht, 42);
+  ASSERT_EQ(ht->table[HASH(42,8)].val, nullptr);
+  ASSERT_EQ(ht->table[HASH(42,8)].next, nullptr);
+  ASSERT_EQ(hashtable_get(ht, 42), nullptr);
+
+  // Simple collision test
+std::cout << "simple collision test" << std::endl;
+  ASSERT_EQ(HASH(0x11,8), 6);
+  ASSERT_EQ(HASH(0x21,8), 6);
+  ASSERT_EQ(HASH(0x31,8), 6);
+  hashtable_insert(ht, 0x11, (void*)0x11);    // Insert into 2nd from last slot
+  hashtable_insert(ht, 0x21, (void*)0x21);    // Collide with first and land in last slot
+  hashtable_insert(ht, 0x31, (void*)0x31);    // Collide, wrap around, and land in first slot
+  ASSERT_EQ(ht->table[6].val, (void*)0x11);
+  ASSERT_EQ(ht->table[7].val, (void*)0x21);
+  ASSERT_EQ(ht->table[0].val, (void*)0x31);
+  ASSERT_EQ(ht->table[6].key, 0x11);
+  ASSERT_EQ(ht->table[7].key, 0x21);
+  ASSERT_EQ(ht->table[0].key, 0x31);
+  ASSERT_EQ(ht->table[6].next, &(ht->table[7]));
+  ASSERT_EQ(ht->table[7].next, &(ht->table[0]));
+  ASSERT_EQ(ht->table[0].next, nullptr);
+
+  // Removal test
+  // TODO: (remove 0x21 from above)
+std::cout << "removal test" << std::endl;
+  hashtable_remove(ht, 0x21);
+  ASSERT_EQ(ht->table[6].val, (void*)0x11);
+  ASSERT_EQ(ht->table[0].val, (void*)0x31);
+  ASSERT_EQ(ht->table[6].key, 0x11);
+  ASSERT_EQ(ht->table[0].key, 0x31);
+  ASSERT_EQ(ht->table[6].next, &(ht->table[0]));
+  ASSERT_EQ(ht->table[0].next, nullptr);
+
+
+  // Collision between non matching hashes, requires relocating some entries and rewriting lists
+std::cout << "collison test between separate hashes" << std::endl;
+  ASSERT_EQ(HASH(0x17, 8), 0);
+  ASSERT_EQ(HASH(0x27, 8), 0);
+  hashtable_insert(ht, 0x21, (void*)0x21);
+  hashtable_insert(ht, 0x17, (void*)0x17);
+  hashtable_insert(ht, 0x27, (void*)0x27);
+  ASSERT_EQ(ht->table[0].val, (void*)0x17);
+  ASSERT_EQ(ht->table[1].val, (void*)0x21);
+  ASSERT_EQ(ht->table[2].val, (void*)0x31);
+  ASSERT_EQ(ht->table[3].val, (void*)0x27);
+  ASSERT_EQ(ht->table[6].val, (void*)0x11);
+  ASSERT_EQ(ht->table[0].key, 0x17);
+  ASSERT_EQ(ht->table[1].key, 0x21);
+  ASSERT_EQ(ht->table[2].key, 0x31);
+  ASSERT_EQ(ht->table[3].key, 0x27);
+  ASSERT_EQ(ht->table[6].key, 0x11);
+  ASSERT_EQ(ht->table[0].next, &(ht->table[3]));
+  ASSERT_EQ(ht->table[1].next, nullptr);
+  ASSERT_EQ(ht->table[2].next, &(ht->table[1]));
+  ASSERT_EQ(ht->table[3].next, nullptr);
+  ASSERT_EQ(ht->table[6].next, &(ht->table[2]));
+
+  // Removal test: remove head of list
+  std::cout << "removal test, split list" << std::endl;
+  hashtable_remove(ht, 0x17);
+  ASSERT_EQ(ht->table[0].val, (void*)0x27);
+  ASSERT_EQ(ht->table[1].val, (void*)0x21);
+  ASSERT_EQ(ht->table[2].val, (void*)0x31);
+  ASSERT_EQ(ht->table[3].val, nullptr);
+  ASSERT_EQ(ht->table[6].val, (void*)0x11);
+  ASSERT_EQ(ht->table[0].key, 0x27);
+  ASSERT_EQ(ht->table[1].key, 0x21);
+  ASSERT_EQ(ht->table[2].key, 0x31);
+  ASSERT_EQ(ht->table[6].key, 0x11);
+  ASSERT_EQ(ht->table[0].next, nullptr);
+  ASSERT_EQ(ht->table[1].next, nullptr);
+  ASSERT_EQ(ht->table[2].next, &(ht->table[1]));
+  ASSERT_EQ(ht->table[3].next, nullptr);
+  ASSERT_EQ(ht->table[6].next, &(ht->table[2]));
+
+  // Overwrite test
+  // Insert 0x11 again, but with new value
+std::cout << "overwrite test" << std::endl;
+  hashtable_insert(ht, 0x11, (void*)0x1234);
+  ASSERT_EQ(ht->table[1].val, (void*)0x21);
+  ASSERT_EQ(ht->table[2].val, (void*)0x31);
+  ASSERT_EQ(ht->table[6].val, (void*)0x1234);
+  ASSERT_EQ(ht->table[1].key, 0x21);
+  ASSERT_EQ(ht->table[2].key, 0x31);
+  ASSERT_EQ(ht->table[6].key, 0x11);
+  ASSERT_EQ(ht->table[1].next, nullptr);
+  ASSERT_EQ(ht->table[2].next, &(ht->table[1]));
+  ASSERT_EQ(ht->table[6].next, &(ht->table[2]));
+
+std::cout << "finished" << std::endl;
+  hashtable_fini(ht);
 }
 
 TEST(MessageQueueTest, creation_test) {

@@ -21,7 +21,7 @@ typedef struct hashtable
   node_t* table;
 } hashtable_t;
 
-#define HASH(val, size) val ^ 0xDEADBEEF % size
+#define HASH(val, size) (val ^ 0xDEADBEEF) % size
 
 hashtable_t* hashtable_init(size_t len)
 {
@@ -57,10 +57,46 @@ void hashtable_insert(hashtable_t* ht, int key, void* val)
   //          collisions, terminating on a occupied spot. 2nd loop iterates from that point
   //          in the table until an empty spot is found. It is then linked to the last element in
   //          the collision list
-  // Case 3 - Key already in table: Iterate in first loop until landed on entry. Execute special
+  // Case 3 - Hash is in-use by an element that doesn't match our hash. Enter special case if block
+  //          to move the squatter to a new place, update their list, and then ours is guaranteed to
+  //          place without collision
+  // Case 4 - Key already in table: Iterate in first loop until landed on entry. Execute special
   //          condition
 
-  node_t* it = &ht->table[HASH(key, ht->len)];
+  node_t* it = &(ht->table[HASH(key, ht->len)]);
+
+  // If space occupied, but no hash collision, move it so we don't mix different hashes in the llist
+  if (it->val != NULL && HASH(it->key, ht->len) != HASH(key, ht->len)) {
+    // Find the start of the list colliding with us
+    node_t dummy;
+    node_t *head = &dummy;
+    head->next = &(ht->table[HASH(it->key, ht->len)]);
+
+    // Find the element pointing to our desired entry
+    while(head->next != it) {
+      head = head->next;
+    }
+
+    // Find a new spot for the old guy to go
+    node_t * squater = head->next;
+    while (squater->val != NULL)                     // Now find a free index to link to
+    {
+      squater = ht->table + (++squater - ht->table) % ht->len;  // Wrap around
+    }
+
+    // Move squatter to new home, update their list
+    squater->val = it->val;
+    squater->key = it->key;
+    squater->next = it->next;
+    head->next = squater;
+
+    // Put our stuff in
+    it->next = NULL;
+    it->key = key;
+    it->val = val;
+    ht->count++;
+    return;
+  }
 
   while (it->next != NULL && it->key != key)  // This bucket is occupied, traverse down the list
   {
@@ -91,28 +127,40 @@ void hashtable_insert(hashtable_t* ht, int key, void* val)
 }
 
 void* hashtable_get(hashtable_t* ht, int key) {
-  node_t* it = &ht->table[HASH(key, ht->len)];
+  node_t* it = &(ht->table[HASH(key, ht->len)]);
   while(it != NULL && it->key != key) {
     it = it->next;
   }
-  return it->val;    // Return either a match or a null pointer, whatever we stumble upon
+  return (it == NULL) ? it : it->val;    // Return either a match or a null pointer
 }
 
 void hashtable_remove(hashtable_t* ht, int key)
 {
-  node_t dummy; // Temporary structure to act as a dummy head
-  dummy.next = &ht->table[HASH(key, ht->len)];    // Have it point to the actual head
-
-  node_t * it = &dummy;
-
-  while(it->next != NULL && it->next->key != key) {
-    it = it->next;
-  }
-  if(it->next != NULL) {   // If we've reached an element that matches the key 
-    node_t * removing = it->next;
-    it->next = removing->next;
-    removing->next = NULL;
-    removing->val = NULL;
+  node_t * front = &(ht->table[HASH(key, ht->len)]);
+  
+  // Special case: removing single item
+  if (front->key == key && front->next == NULL) {
+    front->next = NULL;
+    front->val = NULL;
+  } else if (front->key == key) {
+  // Special case: removing head of list, need to copy second item down
+    node_t * second = front->next;
+    front->next = second->next;
+    front->key = second->key;
+    front->val = second->val;
+    second->next = NULL;
+    second->val = NULL;
+  } else {
+  // Otherwise iterate through the list
+    while(front->next != NULL && front->next->key != key) {
+      front = front->next;
+    }
+    if (front->next != NULL && front->next->key == key) {   // If we've reached an element that matches the key 
+      node_t * removing = front->next;
+      front->next = removing->next;
+      removing->next = NULL;
+      removing->val = NULL;
+    }
   }
   // Otherwise there's nothing to remove
 }

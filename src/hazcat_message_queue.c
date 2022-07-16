@@ -48,6 +48,18 @@ hazcat_init() {
 
 rmw_ret_t
 hazcat_fini() {
+  // Clear mq list
+  mq_node_t * it = mq_list.next;
+  while(it != NULL) {
+    mq_list.next = it->next;
+    rmw_free(it);
+    it = mq_list.next;
+  }
+  mq_list.next = NULL;
+  mq_list.elem = NULL;
+  mq_list.fd = -1;
+  mq_list.file_name = NULL;
+
   hashtable_fini(ht);
   return RMW_RET_OK;
 }
@@ -309,8 +321,9 @@ hazcat_publish(rmw_publisher_t *pub, void *msg)
   int domain_col = ((pub_sub_data_t *)pub->data)->array_num;
 
   // Increment index atomically and use result as our entry
-  // TODO: Fancy compare and swap so mq->index doesn't increment into infinity and wrap around
-  int i = atomic_fetch_add(&(mq->index), 1);
+  // Then fancy compare and swap so mq->index doesn't increment into infinity
+  atomic_int i = atomic_fetch_add(&(mq->index), 1);
+  while (!atomic_compare_exchange_weak(&(mq->index), &i, i % mq->len));
   i %= mq->len;
 
   // Get reference bits and entry to edit
@@ -320,11 +333,16 @@ hazcat_publish(rmw_publisher_t *pub, void *msg)
   // Lock entire row
   lock_domain(&ref_bits->lock, 0xFF);
 
+  // Release any remaining message copies
   if (ref_bits->interest_count > 0)
   {
-    ref_bits->lock = 0;
-    RMW_SET_ERROR_MSG("Can't publish message. Message queue is full");
-    return RMW_RET_ERROR;
+    for(int d = 0; d < DOMAINS_PER_TOPIC; d++) {
+      if (ref_bits->availability & (1 << d)) {
+        entry_t * entry = get_entry(mq, d, i);
+        hma_allocator_t * src_alloc = hashtable_get(ht, entry->alloc_shmem_id);
+        DEALLOCATE(src_alloc, entry->offset);
+      }
+    }
   }
 
   // Store token in appropriate array, converting message pointer to expected offset value
@@ -399,7 +417,7 @@ hazcat_take(rmw_subscription_t *sub)
     void *msg = GET_PTR(src_alloc, entry->offset, void);
 
     // Zero copy condition. Increase ref count on message and use that without copy
-    SHARE(src_alloc, msg);
+    SHARE(src_alloc, entry->offset);
     ret.alloc = src_alloc;
     ret.msg = msg;
   }
@@ -444,6 +462,17 @@ hazcat_take(rmw_subscription_t *sub)
 
     ret.alloc = alloc;
     ret.msg = here;
+  }
+
+  // Message queue holds one copy of each message. If this is the last subscriber, free it
+  if (--(ref_bits->interest_count) <= 0) {
+    for(int d = 0; d < DOMAINS_PER_TOPIC; d++) {
+      if (ref_bits->availability & (1 << d)) {
+        entry_t * entry = get_entry(mq, d, i);
+        hma_allocator_t * src_alloc = hashtable_get(ht, entry->alloc_shmem_id);
+        DEALLOCATE(src_alloc, entry->offset);
+      }
+    }
   }
 
   // Update for next take
@@ -501,6 +530,13 @@ hazcat_unregister_publisher(rmw_publisher_t *pub)
   // If count is zero, then destroy message queue
   if (it->elem->pub_count == 0 && it->elem->sub_count == 0)
   {
+    // // Remove it from the list (fixes bug that occurs if topic is created again)
+    // mq_node_t * front = &mq_list;
+    // while(front->next != it) {
+    //   front = front->next;
+    // }
+    // front->next = it->next;
+
     struct stat st;
     fstat(it->fd, &st);
     if (munmap(it->elem, st.st_size))

@@ -96,6 +96,7 @@ typedef struct pub_sub_data
   mq_node_t *mq;
   uint16_t next_index;
   uint8_t array_num;
+  int depth;
 } pub_sub_data_t;
 
 typedef struct sub_options
@@ -116,14 +117,14 @@ hazcat_fini();
 // the publisher, it will be resized. Messages will not be able to be published or taken while
 // this resize operation is taking place
 rmw_ret_t
-hazcat_register_publisher(rmw_publisher_t *pub, rmw_qos_profile_t *qos);
+hazcat_register_publisher(rmw_publisher_t *pub);
 
 // Registers a subscription with the zero copy buffer associated with it's name. If none exists, one
 // is created. If an existing one does not accommodate the memory domain or history requirements of
 // the subscription, it will be resized. Messages will not be able to be published or taken while
 // this resize operation is taking place
 rmw_ret_t
-hazcat_register_subscription(rmw_subscription_t *sub, rmw_qos_profile_t *qos);
+hazcat_register_subscription(rmw_subscription_t *sub);
 
 // Stores allocator reference and message offset into message queue, has write lock on row
 rmw_ret_t

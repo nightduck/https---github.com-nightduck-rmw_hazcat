@@ -82,7 +82,7 @@ inline entry_t *get_entry(message_queue_t *mq, int domain, int i)
 
 // Convenient utility method since 95% of registering subscription is same as registering publisher
 rmw_ret_t
-hazcat_register_pub_or_sub(pub_sub_data_t *data, const char *topic_name, rmw_qos_profile_t *qos)
+hazcat_register_pub_or_sub(pub_sub_data_t *data, const char *topic_name)
 {
   // Register associated allocator, so we can lookup address given shared mem id
   hashtable_insert(ht, data->alloc->shmem_id, data->alloc);
@@ -127,7 +127,7 @@ hazcat_register_pub_or_sub(pub_sub_data_t *data, const char *topic_name, rmw_qos
     if (st.st_size == 0)
     {
       // TODO: Use history policy more intelligently so page alignment can reccomend depth
-      size_t mq_size = sizeof(message_queue_t) + qos->depth * sizeof(ref_bits_t) + qos->depth * sizeof(entry_t);
+      size_t mq_size = sizeof(message_queue_t) + data->depth * sizeof(ref_bits_t) + data->depth * sizeof(entry_t);
       if (ftruncate(fd, mq_size) == -1)
       {
         RMW_SET_ERROR_MSG("Couldn't resize shared message queue during creation");
@@ -142,7 +142,7 @@ hazcat_register_pub_or_sub(pub_sub_data_t *data, const char *topic_name, rmw_qos
       }
 
       mq->index = 0;
-      mq->len = qos->depth;
+      mq->len = data->depth;
       mq->num_domains = 1;
       mq->domains[0] = CPU; // Domain 0 should always be main memory
       if (data->alloc->domain != CPU)
@@ -210,16 +210,16 @@ hazcat_register_pub_or_sub(pub_sub_data_t *data, const char *topic_name, rmw_qos
     needs_resize = true;
   }
 
-  if (qos->depth > mq->len)
+  if (data->depth > mq->len)
   {
-    mq->len = qos->depth;
+    mq->len = data->depth;
     needs_resize = true;
   }
 
   if (needs_resize)
   {
     // TODO: Use history policy more intelligently so page alignment can reccomend depth
-    size_t mq_size = sizeof(message_queue_t) + qos->depth * sizeof(ref_bits_t) + qos->depth * sizeof(entry_t);
+    size_t mq_size = sizeof(message_queue_t) + data->depth * sizeof(ref_bits_t) + data->depth * sizeof(entry_t);
     if (ftruncate(it->fd, mq_size) == -1)
     {
       RMW_SET_ERROR_MSG("Couldn't resize shared message queue");
@@ -234,10 +234,11 @@ hazcat_register_pub_or_sub(pub_sub_data_t *data, const char *topic_name, rmw_qos
   return RMW_RET_OK;
 }
 
+// TODO: Don't need to specify qos, can extract from pub
 rmw_ret_t
-hazcat_register_publisher(rmw_publisher_t *pub, rmw_qos_profile_t *qos)
+hazcat_register_publisher(rmw_publisher_t *pub)
 {
-  int ret = hazcat_register_pub_or_sub(pub->data, pub->topic_name, qos);  // Heavy lifting here
+  int ret = hazcat_register_pub_or_sub(pub->data, pub->topic_name);  // Heavy lifting here
   if (ret != RMW_RET_OK)
   {
     return ret;
@@ -269,9 +270,9 @@ hazcat_register_publisher(rmw_publisher_t *pub, rmw_qos_profile_t *qos)
 }
 
 rmw_ret_t
-hazcat_register_subscription(rmw_subscription_t *sub, rmw_qos_profile_t *qos)
+hazcat_register_subscription(rmw_subscription_t *sub)
 {
-  int ret = hazcat_register_pub_or_sub(sub->data, sub->topic_name, qos);  // Heavy lifting here
+  int ret = hazcat_register_pub_or_sub(sub->data, sub->topic_name);  // Heavy lifting here
   if (ret != RMW_RET_OK)
   {
     return ret;
@@ -320,11 +321,12 @@ hazcat_publish(rmw_publisher_t *pub, void *msg)
   message_queue_t *mq = ((pub_sub_data_t *)pub->data)->mq->elem;
   int domain_col = ((pub_sub_data_t *)pub->data)->array_num;
 
-  // Increment index atomically and use result as our entry
-  // Then fancy compare and swap so mq->index doesn't increment into infinity
+  // Get current value of index to publish into, then increment index for next guy
   atomic_int i = atomic_fetch_add(&(mq->index), 1);
-  while (!atomic_compare_exchange_weak(&(mq->index), &i, i % mq->len));
-  i %= mq->len;
+
+  // Then fancy compare and swap so mq->index doesn't increment into infinity
+  atomic_int v = i+1;
+  while (!atomic_compare_exchange_weak(&(mq->index), &v, v % mq->len));
 
   // Get reference bits and entry to edit
   ref_bits_t *ref_bits = get_ref_bits(mq, i);
@@ -391,8 +393,8 @@ hazcat_take(rmw_subscription_t *sub)
 
   // Find next relevant message (skip over stale messages if we missed them)
   int i = ((pub_sub_data_t *)sub->data)->next_index;
-  int history = ((sub_opts_t *)sub->options.rmw_specific_subscription_payload)->qos_history;
-  i = ((mq->index + mq->len - history) % mq->len > i) ? (mq->index + mq->len - history) % mq->len : i;
+  int history = ((pub_sub_data_t *)sub->data)->depth;
+  i = ((mq->index + mq->len - i) % mq->len > history) ? (mq->index + mq->len - history) % mq->len : i;
 
   // No message available
   if (i == mq->index) {
@@ -466,7 +468,7 @@ hazcat_take(rmw_subscription_t *sub)
 
   // Message queue holds one copy of each message. If this is the last subscriber, free it
   if (--(ref_bits->interest_count) <= 0) {
-    for(int d = 0; d < DOMAINS_PER_TOPIC; d++) {
+    for(int d = 0; d < mq->num_domains; d++) {
       if (ref_bits->availability & (1 << d)) {
         entry_t * entry = get_entry(mq, d, i);
         hma_allocator_t * src_alloc = hashtable_get(ht, entry->alloc_shmem_id);

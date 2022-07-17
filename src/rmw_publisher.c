@@ -71,7 +71,7 @@ rmw_create_publisher(
 
   strcpy(pub->topic_name, topic_name);
 
-  hazcat_register_publisher(pub, qos_policies);
+  hazcat_register_publisher(pub);
 
   return pub;
 }

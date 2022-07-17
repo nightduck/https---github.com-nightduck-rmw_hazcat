@@ -61,8 +61,9 @@ rmw_create_subscription(
   rmw_subscription_t * sub = rmw_subscription_allocate();
   pub_sub_data_t * data = rmw_allocate(sizeof(pub_sub_data_t));
 
-  // Populate data->alloc with allocator specified (all other fields are set during registration)
+  // Populate data->alloc with allocator specified and data->history with qos setting
   data->alloc = (hma_allocator_t*)subscription_options->rmw_specific_subscription_payload;
+  data->depth = qos_policies->depth;
 
   sub->implementation_identifier = rmw_get_implementation_identifier();
   sub->data = data;
@@ -72,7 +73,7 @@ rmw_create_subscription(
 
   strcpy(sub->topic_name, topic_name);
 
-  hazcat_register_publisher(sub, qos_policies);
+  hazcat_register_subscription(sub);
 
   return sub;
 }

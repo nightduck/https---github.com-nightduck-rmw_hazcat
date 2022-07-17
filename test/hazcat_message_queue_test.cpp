@@ -22,6 +22,7 @@
 
 #include <gtest/gtest.h>
 
+#include <dirent.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -51,192 +52,248 @@ public:
   rmw_publisher_t * cpu_pub;
   rmw_publisher_t * cuda_pub;
   rmw_subscription_t * cpu_sub;
+  rmw_subscription_t * cpu_sub2;
   rmw_subscription_t * cuda_sub;
+  cpu_ringbuf_allocator_t * cpu_alloc;
+  cuda_ringbuf_allocator_t * cuda_alloc;
+  rmw_qos_profile_t pub_qos, sub_qos;
 };
 
 TEST(HashtableTest, hashtable_test) {
   // Creation test
   hashtable_t * ht = hashtable_init(8);
-  ASSERT_EQ(ht->len, 8);
-  ASSERT_EQ(ht->count, 0);
-  ASSERT_EQ((uint8_t*)ht->table, (uint8_t*)ht + sizeof(hashtable_t));
+  EXPECT_EQ(ht->len, 8);
+  EXPECT_EQ(ht->count, 0);
+  EXPECT_EQ((uint8_t*)ht->table, (uint8_t*)ht + sizeof(hashtable_t));
   for(int i = 0; i < 8; i++) {
-    ASSERT_EQ(ht->table[i].next, nullptr);
-    ASSERT_EQ(ht->table[i].val, nullptr);
+    EXPECT_EQ(ht->table[i].next, nullptr);
+    EXPECT_EQ(ht->table[i].val, nullptr);
   }
 
   // Attempt retrival of non-existant element
-  ASSERT_EQ(hashtable_get(ht, 42), nullptr);
+  EXPECT_EQ(hashtable_get(ht, 42), nullptr);
 
   // Ordinary insertion and removal test
   hashtable_insert(ht, 42, (void*)0x42);
-  ASSERT_EQ(ht->table[HASH(42,8)].val, (void*)0x42);
-  ASSERT_EQ(ht->table[HASH(42,8)].key, 42);
-  ASSERT_EQ(ht->table[HASH(42,8)].next, nullptr);
-  ASSERT_EQ(hashtable_get(ht, 42), (void*)0x42);
+  EXPECT_EQ(ht->table[HASH(42,8)].val, (void*)0x42);
+  EXPECT_EQ(ht->table[HASH(42,8)].key, 42);
+  EXPECT_EQ(ht->table[HASH(42,8)].next, nullptr);
+  EXPECT_EQ(hashtable_get(ht, 42), (void*)0x42);
   hashtable_remove(ht, 42);
-  ASSERT_EQ(ht->table[HASH(42,8)].val, nullptr);
-  ASSERT_EQ(ht->table[HASH(42,8)].next, nullptr);
-  ASSERT_EQ(hashtable_get(ht, 42), nullptr);
+  EXPECT_EQ(ht->table[HASH(42,8)].val, nullptr);
+  EXPECT_EQ(ht->table[HASH(42,8)].next, nullptr);
+  EXPECT_EQ(hashtable_get(ht, 42), nullptr);
 
   // Simple collision test
-  ASSERT_EQ(HASH(0x11,8), 6);
-  ASSERT_EQ(HASH(0x21,8), 6);
-  ASSERT_EQ(HASH(0x31,8), 6);
+  EXPECT_EQ(HASH(0x11,8), 6);
+  EXPECT_EQ(HASH(0x21,8), 6);
+  EXPECT_EQ(HASH(0x31,8), 6);
   hashtable_insert(ht, 0x11, (void*)0x11);    // Insert into 2nd from last slot
   hashtable_insert(ht, 0x21, (void*)0x21);    // Collide with first and land in last slot
   hashtable_insert(ht, 0x31, (void*)0x31);    // Collide, wrap around, and land in first slot
-  ASSERT_EQ(ht->table[6].val, (void*)0x11);
-  ASSERT_EQ(ht->table[7].val, (void*)0x21);
-  ASSERT_EQ(ht->table[0].val, (void*)0x31);
-  ASSERT_EQ(ht->table[6].key, 0x11);
-  ASSERT_EQ(ht->table[7].key, 0x21);
-  ASSERT_EQ(ht->table[0].key, 0x31);
-  ASSERT_EQ(ht->table[6].next, &(ht->table[7]));
-  ASSERT_EQ(ht->table[7].next, &(ht->table[0]));
-  ASSERT_EQ(ht->table[0].next, nullptr);
+  EXPECT_EQ(ht->table[6].val, (void*)0x11);
+  EXPECT_EQ(ht->table[7].val, (void*)0x21);
+  EXPECT_EQ(ht->table[0].val, (void*)0x31);
+  EXPECT_EQ(ht->table[6].key, 0x11);
+  EXPECT_EQ(ht->table[7].key, 0x21);
+  EXPECT_EQ(ht->table[0].key, 0x31);
+  EXPECT_EQ(ht->table[6].next, &(ht->table[7]));
+  EXPECT_EQ(ht->table[7].next, &(ht->table[0]));
+  EXPECT_EQ(ht->table[0].next, nullptr);
 
   // Removal test
   // TODO: (remove 0x21 from above)
   hashtable_remove(ht, 0x21);
-  ASSERT_EQ(ht->table[6].val, (void*)0x11);
-  ASSERT_EQ(ht->table[0].val, (void*)0x31);
-  ASSERT_EQ(ht->table[6].key, 0x11);
-  ASSERT_EQ(ht->table[0].key, 0x31);
-  ASSERT_EQ(ht->table[6].next, &(ht->table[0]));
-  ASSERT_EQ(ht->table[0].next, nullptr);
+  EXPECT_EQ(ht->table[6].val, (void*)0x11);
+  EXPECT_EQ(ht->table[0].val, (void*)0x31);
+  EXPECT_EQ(ht->table[6].key, 0x11);
+  EXPECT_EQ(ht->table[0].key, 0x31);
+  EXPECT_EQ(ht->table[6].next, &(ht->table[0]));
+  EXPECT_EQ(ht->table[0].next, nullptr);
 
 
   // Collision between non matching hashes, requires relocating some entries and rewriting lists
-  ASSERT_EQ(HASH(0x17, 8), 0);
-  ASSERT_EQ(HASH(0x27, 8), 0);
+  EXPECT_EQ(HASH(0x17, 8), 0);
+  EXPECT_EQ(HASH(0x27, 8), 0);
   hashtable_insert(ht, 0x21, (void*)0x21);
   hashtable_insert(ht, 0x17, (void*)0x17);
   hashtable_insert(ht, 0x27, (void*)0x27);
-  ASSERT_EQ(ht->table[0].val, (void*)0x17);
-  ASSERT_EQ(ht->table[1].val, (void*)0x21);
-  ASSERT_EQ(ht->table[2].val, (void*)0x31);
-  ASSERT_EQ(ht->table[3].val, (void*)0x27);
-  ASSERT_EQ(ht->table[6].val, (void*)0x11);
-  ASSERT_EQ(ht->table[0].key, 0x17);
-  ASSERT_EQ(ht->table[1].key, 0x21);
-  ASSERT_EQ(ht->table[2].key, 0x31);
-  ASSERT_EQ(ht->table[3].key, 0x27);
-  ASSERT_EQ(ht->table[6].key, 0x11);
-  ASSERT_EQ(ht->table[0].next, &(ht->table[3]));
-  ASSERT_EQ(ht->table[1].next, nullptr);
-  ASSERT_EQ(ht->table[2].next, &(ht->table[1]));
-  ASSERT_EQ(ht->table[3].next, nullptr);
-  ASSERT_EQ(ht->table[6].next, &(ht->table[2]));
+  EXPECT_EQ(ht->table[0].val, (void*)0x17);
+  EXPECT_EQ(ht->table[1].val, (void*)0x21);
+  EXPECT_EQ(ht->table[2].val, (void*)0x31);
+  EXPECT_EQ(ht->table[3].val, (void*)0x27);
+  EXPECT_EQ(ht->table[6].val, (void*)0x11);
+  EXPECT_EQ(ht->table[0].key, 0x17);
+  EXPECT_EQ(ht->table[1].key, 0x21);
+  EXPECT_EQ(ht->table[2].key, 0x31);
+  EXPECT_EQ(ht->table[3].key, 0x27);
+  EXPECT_EQ(ht->table[6].key, 0x11);
+  EXPECT_EQ(ht->table[0].next, &(ht->table[3]));
+  EXPECT_EQ(ht->table[1].next, nullptr);
+  EXPECT_EQ(ht->table[2].next, &(ht->table[1]));
+  EXPECT_EQ(ht->table[3].next, nullptr);
+  EXPECT_EQ(ht->table[6].next, &(ht->table[2]));
 
   // Removal test: remove head of list
   hashtable_remove(ht, 0x17);
-  ASSERT_EQ(ht->table[0].val, (void*)0x27);
-  ASSERT_EQ(ht->table[1].val, (void*)0x21);
-  ASSERT_EQ(ht->table[2].val, (void*)0x31);
-  ASSERT_EQ(ht->table[3].val, nullptr);
-  ASSERT_EQ(ht->table[6].val, (void*)0x11);
-  ASSERT_EQ(ht->table[0].key, 0x27);
-  ASSERT_EQ(ht->table[1].key, 0x21);
-  ASSERT_EQ(ht->table[2].key, 0x31);
-  ASSERT_EQ(ht->table[6].key, 0x11);
-  ASSERT_EQ(ht->table[0].next, nullptr);
-  ASSERT_EQ(ht->table[1].next, nullptr);
-  ASSERT_EQ(ht->table[2].next, &(ht->table[1]));
-  ASSERT_EQ(ht->table[3].next, nullptr);
-  ASSERT_EQ(ht->table[6].next, &(ht->table[2]));
+  EXPECT_EQ(ht->table[0].val, (void*)0x27);
+  EXPECT_EQ(ht->table[1].val, (void*)0x21);
+  EXPECT_EQ(ht->table[2].val, (void*)0x31);
+  EXPECT_EQ(ht->table[3].val, nullptr);
+  EXPECT_EQ(ht->table[6].val, (void*)0x11);
+  EXPECT_EQ(ht->table[0].key, 0x27);
+  EXPECT_EQ(ht->table[1].key, 0x21);
+  EXPECT_EQ(ht->table[2].key, 0x31);
+  EXPECT_EQ(ht->table[6].key, 0x11);
+  EXPECT_EQ(ht->table[0].next, nullptr);
+  EXPECT_EQ(ht->table[1].next, nullptr);
+  EXPECT_EQ(ht->table[2].next, &(ht->table[1]));
+  EXPECT_EQ(ht->table[3].next, nullptr);
+  EXPECT_EQ(ht->table[6].next, &(ht->table[2]));
 
   // Overwrite test
   // Insert 0x11 again, but with new value
   hashtable_insert(ht, 0x11, (void*)0x1234);
-  ASSERT_EQ(ht->table[1].val, (void*)0x21);
-  ASSERT_EQ(ht->table[2].val, (void*)0x31);
-  ASSERT_EQ(ht->table[6].val, (void*)0x1234);
-  ASSERT_EQ(ht->table[1].key, 0x21);
-  ASSERT_EQ(ht->table[2].key, 0x31);
-  ASSERT_EQ(ht->table[6].key, 0x11);
-  ASSERT_EQ(ht->table[1].next, nullptr);
-  ASSERT_EQ(ht->table[2].next, &(ht->table[1]));
-  ASSERT_EQ(ht->table[6].next, &(ht->table[2]));
+  EXPECT_EQ(ht->table[1].val, (void*)0x21);
+  EXPECT_EQ(ht->table[2].val, (void*)0x31);
+  EXPECT_EQ(ht->table[6].val, (void*)0x1234);
+  EXPECT_EQ(ht->table[1].key, 0x21);
+  EXPECT_EQ(ht->table[2].key, 0x31);
+  EXPECT_EQ(ht->table[6].key, 0x11);
+  EXPECT_EQ(ht->table[1].next, nullptr);
+  EXPECT_EQ(ht->table[2].next, &(ht->table[1]));
+  EXPECT_EQ(ht->table[6].next, &(ht->table[2]));
 
   hashtable_fini(ht);
+}
+
+// Not a test, just always runs to remove any shared files created from previous tests
+TEST_F(MessageQueueTest, cleanup) {
+  DIR *d;
+  struct dirent *dir;
+  d = opendir("/dev/shm/");
+  if (d) {
+    while ((dir = readdir(d)) != NULL) {
+      if (strncmp(dir->d_name, "ros2_", 5) == 0) {
+        int ret = shm_unlink(dir->d_name);
+        EXPECT_EQ(ret, 0);
+      }
+    }
+    closedir(d);
+  }
 }
 
 TEST_F(MessageQueueTest, creation_and_registration) {
   rmw_node_t dummy;                                     // Content doesn't matter
   rosidl_message_type_support_t dummy_type_support;     // Content doesn't matter
-  rmw_qos_profile_t pub_qos, sub_qos;
-  pub_qos.depth = 5;
-  sub_qos.depth = 1;
 
-  cpu_ringbuf_allocator_t * alloc = create_cpu_ringbuf_allocator(8, 10);
-  rmw_publisher_options_t pub_opts;
-  pub_opts.rmw_specific_publisher_payload = (void*)alloc;
-  rmw_subscription_options_t sub_opts;
-  sub_opts.rmw_specific_subscription_payload = (void*)alloc;
-
-  rmw_publisher_t * pub = rmw_publisher_allocate();
-  rmw_subscription_t * sub = rmw_subscription_allocate();
+  cpu_pub = rmw_publisher_allocate();
+  cpu_sub = rmw_subscription_allocate();
   pub_sub_data_t * pub_data = (pub_sub_data_t*)rmw_allocate(sizeof(pub_sub_data_t));
   pub_sub_data_t * sub_data = (pub_sub_data_t*)rmw_allocate(sizeof(pub_sub_data_t));
-  MessageQueueTest::cpu_pub = pub;
-  MessageQueueTest::cpu_sub = sub;
 
   // Populate data->alloc with allocator
-  pub_data->alloc = (hma_allocator_t*)alloc;
-  sub_data->alloc = (hma_allocator_t*)alloc;
+  cpu_alloc = create_cpu_ringbuf_allocator(8, 10);
+  pub_data->alloc = (hma_allocator_t*)cpu_alloc;
+  sub_data->alloc = (hma_allocator_t*)cpu_alloc;
+  pub_data->depth = 5;
+  sub_data->depth = 1;
 
-  pub->implementation_identifier = rmw_get_implementation_identifier();
-  pub->data = pub_data;
-  pub->topic_name = "test";
-  pub->options = pub_opts;
-  pub->can_loan_messages = true;
+  cpu_pub->implementation_identifier = rmw_get_implementation_identifier();
+  cpu_pub->data = pub_data;
+  cpu_pub->topic_name = "test";
+  cpu_pub->can_loan_messages = true;
 
-  sub->implementation_identifier = rmw_get_implementation_identifier();
-  sub->data = sub_data;
-  sub->topic_name = "test";
-  sub->options = sub_opts;
-  sub->can_loan_messages = true;
+  cpu_sub->implementation_identifier = rmw_get_implementation_identifier();
+  cpu_sub->data = sub_data;
+  cpu_sub->topic_name = "test";
+  cpu_sub->can_loan_messages = true;
 
   ASSERT_EQ(hazcat_init(), RMW_RET_OK);
 
-  ASSERT_EQ(hazcat_register_publisher(pub, &pub_qos), RMW_RET_OK);
+  EXPECT_EQ(hazcat_register_publisher(cpu_pub), RMW_RET_OK);
 
-  mq_node_t * mq_node = pub_data->mq;
+  mq_node = pub_data->mq;
   message_queue_t * mq = mq_node->elem;
-  ASSERT_STREQ(mq_node->file_name, "/ros2_hazcat.test");
+  EXPECT_STREQ(mq_node->file_name, "/ros2_hazcat.test");
   ASSERT_GT(mq_node->fd, 0);
-  MessageQueueTest::mq_node = mq_node;
 
-  ASSERT_EQ(mq->index, 0);
-  ASSERT_EQ(mq->len, 5);
-  ASSERT_EQ(mq->num_domains, 1);
-  ASSERT_EQ(mq->domains[0], alloc->untyped.domain);
-  ASSERT_EQ(mq->pub_count, 1);
-  ASSERT_EQ(mq->sub_count, 0);
+  EXPECT_EQ(mq->index, 0);
+  EXPECT_EQ(mq->len, 5);
+  EXPECT_EQ(mq->num_domains, 1);
+  EXPECT_EQ(mq->domains[0], cpu_alloc->untyped.domain);
+  EXPECT_EQ(mq->pub_count, 1);
+  EXPECT_EQ(mq->sub_count, 0);
 
-  ASSERT_EQ(hazcat_register_subscription(sub, &sub_qos), RMW_RET_OK);
+  EXPECT_EQ(hazcat_register_subscription(cpu_sub), RMW_RET_OK);
 
-  ASSERT_EQ(mq, sub_data->mq->elem);    // Should use same message queue
-  ASSERT_EQ(mq_node, sub_data->mq);
-  ASSERT_EQ(mq->index, 0);
-  ASSERT_EQ(mq->len, 5);
-  ASSERT_EQ(mq->num_domains, 1);
-  ASSERT_EQ(mq->domains[0], alloc->untyped.domain);
-  ASSERT_EQ(mq->pub_count, 1);
-  ASSERT_EQ(mq->sub_count, 1);
+  EXPECT_EQ(mq, sub_data->mq->elem);    // Should use same message queue
+  EXPECT_EQ(mq_node, sub_data->mq);
+  EXPECT_EQ(mq->index, 0);
+  EXPECT_EQ(mq->len, 5);
+  EXPECT_EQ(mq->num_domains, 1);
+  EXPECT_EQ(mq->domains[0], cpu_alloc->untyped.domain);
+  EXPECT_EQ(mq->pub_count, 1);
+  EXPECT_EQ(mq->sub_count, 1);
 
   // Test pub and sub data
-  ASSERT_EQ(pub_data->alloc, &alloc->untyped);    // Should reference allocator
-  ASSERT_EQ(sub_data->alloc, &alloc->untyped);
-  ASSERT_EQ(pub_data->next_index, 0);   // Should be waiting at front of message queue
-  ASSERT_EQ(sub_data->next_index, 0);
-  ASSERT_EQ(pub_data->array_num, 0);    // Should use same first domain
-  ASSERT_EQ(sub_data->array_num, 0);
+  EXPECT_EQ(pub_data->alloc, &cpu_alloc->untyped);    // Should reference allocator
+  EXPECT_EQ(sub_data->alloc, &cpu_alloc->untyped);
+  EXPECT_EQ(pub_data->next_index, 0);   // Should be waiting at front of message queue
+  EXPECT_EQ(sub_data->next_index, 0);
+  EXPECT_EQ(pub_data->array_num, 0);    // Should use same first domain
+  EXPECT_EQ(sub_data->array_num, 0);
 }
 
 TEST_F(MessageQueueTest, basic_rw) {
-  // Publish twice, read once
+  message_queue_t * mq = mq_node->elem;
+
+  // Test take, should expect empty message
+  msg_ref_t msg_ref = hazcat_take(cpu_sub);
+  EXPECT_EQ(msg_ref.alloc, nullptr);
+  EXPECT_EQ(msg_ref.msg, nullptr);
+
+  // Publish 2 messages
+  int msg1_offset = ALLOCATE(cpu_alloc, 8);
+  long * msg1 = GET_PTR(cpu_alloc, msg1_offset, long);
+  int msg2_offset = ALLOCATE(cpu_alloc, 8);
+  long * msg2 = GET_PTR(cpu_alloc, msg2_offset, long);
+  EXPECT_EQ(hazcat_publish(cpu_pub, msg1), RMW_RET_OK);
+  EXPECT_EQ(mq->index, 1);
+  ref_bits_t * ref_bits = get_ref_bits(mq, 0);
+  entry_t * entry = get_entry(mq, 0, 0);
+  EXPECT_EQ(ref_bits->availability, 0x1);
+  EXPECT_EQ(ref_bits->interest_count, 1);
+  EXPECT_EQ(ref_bits->lock, 0);
+  EXPECT_EQ(entry->alloc_shmem_id, cpu_alloc->shmem_id);
+  EXPECT_EQ(entry->len, 8);
+  EXPECT_EQ(entry->offset, msg1_offset);
+  EXPECT_EQ(hazcat_publish(cpu_pub, msg2), RMW_RET_OK);
+  EXPECT_EQ(mq->index, 2);
+  ref_bits = get_ref_bits(mq, 1);
+  entry = get_entry(mq, 0, 1);
+  EXPECT_EQ(ref_bits->availability, 0x1);
+  EXPECT_EQ(ref_bits->interest_count, 1);
+  EXPECT_EQ(ref_bits->lock, 0);
+  EXPECT_EQ(entry->alloc_shmem_id, cpu_alloc->shmem_id);
+  EXPECT_EQ(entry->len, 8);
+  EXPECT_EQ(entry->offset, msg2_offset);
+
+  // Test take, should only receive most recent message
+  msg_ref = hazcat_take(cpu_sub);
+  EXPECT_EQ(msg_ref.msg, msg2);
+  EXPECT_EQ(msg_ref.alloc, (hma_allocator_t*)cpu_alloc);
+  EXPECT_EQ(ref_bits->availability, 0x1);
+  EXPECT_EQ(ref_bits->interest_count, 0);
+  EXPECT_EQ(ref_bits->lock, 0);
+  EXPECT_EQ(entry->alloc_shmem_id, cpu_alloc->shmem_id);
+  EXPECT_EQ(entry->len, 8);
+  EXPECT_EQ(entry->offset, msg2_offset);
+
+  // Test take, should expect empty message
+  msg_ref = hazcat_take(cpu_sub);
+  EXPECT_EQ(msg_ref.alloc, nullptr);
+  EXPECT_EQ(msg_ref.msg, nullptr);
 }
 
 TEST_F(MessageQueueTest, multi_domain_registration) {
@@ -252,15 +309,15 @@ TEST_F(MessageQueueTest, multi_domain_registration) {
 //   rmw_publisher_t * cuda_pub = MessageQueueTest::cuda_pub;
 //   rmw_subscription_t * cuda_sub = MessageQueueTest::cuda_sub;
 
-//   ASSERT_EQ(hazcat_unregister_publisher(cuda_pub), RMW_RET_OK);
+//   EXPECT_EQ(hazcat_unregister_publisher(cuda_pub), RMW_RET_OK);
 
-//   ASSERT_EQ(mq->pub_count, 1);
-//   ASSERT_EQ(mq->sub_count, 2);
+//   EXPECT_EQ(mq->pub_count, 1);
+//   EXPECT_EQ(mq->sub_count, 2);
 
-//   ASSERT_EQ(hazcat_unregister_subscription(cuda_sub), RMW_RET_OK);
+//   EXPECT_EQ(hazcat_unregister_subscription(cuda_sub), RMW_RET_OK);
 
-//   ASSERT_EQ(mq->pub_count, 1);
-//   ASSERT_EQ(mq->sub_count, 1);
+//   EXPECT_EQ(mq->pub_count, 1);
+//   EXPECT_EQ(mq->sub_count, 1);
 
 //   cuda_ringbuf_unmap((hma_allocator_t*)((pub_sub_data_t*)cuda_pub->data)->alloc);
 //   rmw_free(cuda_pub->data);
@@ -270,16 +327,14 @@ TEST_F(MessageQueueTest, multi_domain_registration) {
 // }
 
 TEST_F(MessageQueueTest, unregister_and_destroy) {
-  message_queue_t * mq = MessageQueueTest::mq_node->elem;
-  rmw_publisher_t * cpu_pub = MessageQueueTest::cpu_pub;
-  rmw_subscription_t * cpu_sub = MessageQueueTest::cpu_sub;
+  message_queue_t * mq = mq_node->elem;
 
-  ASSERT_EQ(hazcat_unregister_publisher(cpu_pub), RMW_RET_OK);
+  EXPECT_EQ(hazcat_unregister_publisher(cpu_pub), RMW_RET_OK);
 
-  ASSERT_EQ(mq->pub_count, 0);
-  ASSERT_EQ(mq->sub_count, 1);
+  EXPECT_EQ(mq->pub_count, 0);
+  EXPECT_EQ(mq->sub_count, 1);
 
-  ASSERT_EQ(hazcat_unregister_subscription(cpu_sub), RMW_RET_OK);
+  EXPECT_EQ(hazcat_unregister_subscription(cpu_sub), RMW_RET_OK);
 
   // Reopen file
   char shmem_file[128] = "/ros2_hazcat";
@@ -290,12 +345,12 @@ TEST_F(MessageQueueTest, unregister_and_destroy) {
   // File should be empty, confirming it was deleted before
   struct stat st;
   fstat(fd, &st);
-  ASSERT_EQ(st.st_size, 0);
+  EXPECT_EQ(st.st_size, 0);
 
   // Now remove it again
-  ASSERT_EQ(shm_unlink(mq_node->file_name), 0);
+  EXPECT_EQ(shm_unlink(mq_node->file_name), 0);
 
-  ASSERT_EQ(hazcat_fini(), RMW_RET_OK);
+  EXPECT_EQ(hazcat_fini(), RMW_RET_OK);
 
   cpu_ringbuf_unmap((hma_allocator_t*)((pub_sub_data_t*)cpu_pub->data)->alloc);
   rmw_free(cpu_pub->data);
@@ -338,49 +393,49 @@ TEST_F(MessageQueueTest, unregister_and_destroy) {
 //   sub->options = sub_opts;
 //   sub->can_loan_messages = true;
 
-//   ASSERT_EQ(hazcat_register_publisher(pub, &pub_qos), RMW_RET_OK);
+//   EXPECT_EQ(hazcat_register_publisher(pub, &pub_qos), RMW_RET_OK);
 
 //   mq_node_t * mq_node = pub_data->mq;
 //   message_queue_t * mq = mq_node->elem;
 //   ASSERT_STREQ(mq_node->file_name, "/ros2_hazcat.test");
 //   ASSERT_GT(mq_node->fd, 0);
 
-//   ASSERT_EQ(mq->index, 0);
-//   ASSERT_EQ(mq->len, 5);
-//   ASSERT_EQ(mq->num_domains, 1);
-//   ASSERT_EQ(mq->domains[0], alloc->untyped.domain);
-//   ASSERT_EQ(mq->pub_count, 1);
-//   ASSERT_EQ(mq->sub_count, 0);
+//   EXPECT_EQ(mq->index, 0);
+//   EXPECT_EQ(mq->len, 5);
+//   EXPECT_EQ(mq->num_domains, 1);
+//   EXPECT_EQ(mq->domains[0], alloc->untyped.domain);
+//   EXPECT_EQ(mq->pub_count, 1);
+//   EXPECT_EQ(mq->sub_count, 0);
 
-//   ASSERT_EQ(hazcat_register_subscription(sub, &sub_qos), RMW_RET_OK);
+//   EXPECT_EQ(hazcat_register_subscription(sub, &sub_qos), RMW_RET_OK);
 
-//   ASSERT_EQ(mq, sub_data->mq->elem);    // Should use same message queue
-//   ASSERT_EQ(mq_node, sub_data->mq);
-//   ASSERT_EQ(mq->index, 0);
-//   ASSERT_EQ(mq->len, 10);
-//   ASSERT_EQ(mq->num_domains, 1);
-//   ASSERT_EQ(mq->domains[0], alloc->untyped.domain);
-//   ASSERT_EQ(mq->pub_count, 1);
-//   ASSERT_EQ(mq->sub_count, 1);
+//   EXPECT_EQ(mq, sub_data->mq->elem);    // Should use same message queue
+//   EXPECT_EQ(mq_node, sub_data->mq);
+//   EXPECT_EQ(mq->index, 0);
+//   EXPECT_EQ(mq->len, 10);
+//   EXPECT_EQ(mq->num_domains, 1);
+//   EXPECT_EQ(mq->domains[0], alloc->untyped.domain);
+//   EXPECT_EQ(mq->pub_count, 1);
+//   EXPECT_EQ(mq->sub_count, 1);
 
 //   // Test pub and sub data
-//   ASSERT_EQ(pub_data->alloc, &alloc->untyped);    // Should reference allocator
-//   ASSERT_EQ(sub_data->alloc, &alloc->untyped);
-//   ASSERT_EQ(pub_data->next_index, 0);   // Should be waiting at front of message queue
-//   ASSERT_EQ(sub_data->next_index, 0);
-//   ASSERT_EQ(pub_data->array_num, 0);    // Should use same first domain
-//   ASSERT_EQ(sub_data->array_num, 0);
+//   EXPECT_EQ(pub_data->alloc, &alloc->untyped);    // Should reference allocator
+//   EXPECT_EQ(sub_data->alloc, &alloc->untyped);
+//   EXPECT_EQ(pub_data->next_index, 0);   // Should be waiting at front of message queue
+//   EXPECT_EQ(sub_data->next_index, 0);
+//   EXPECT_EQ(pub_data->array_num, 0);    // Should use same first domain
+//   EXPECT_EQ(sub_data->array_num, 0);
 
-//   ASSERT_EQ(hazcat_unregister_publisher(pub), RMW_RET_OK);
+//   EXPECT_EQ(hazcat_unregister_publisher(pub), RMW_RET_OK);
 
-//   ASSERT_EQ(mq->index, 0);
-//   ASSERT_EQ(mq->len, 10);
-//   ASSERT_EQ(mq->num_domains, 1);
-//   ASSERT_EQ(mq->domains[0], alloc->untyped.domain);
-//   ASSERT_EQ(mq->pub_count, 0);
-//   ASSERT_EQ(mq->sub_count, 1);
+//   EXPECT_EQ(mq->index, 0);
+//   EXPECT_EQ(mq->len, 10);
+//   EXPECT_EQ(mq->num_domains, 1);
+//   EXPECT_EQ(mq->domains[0], alloc->untyped.domain);
+//   EXPECT_EQ(mq->pub_count, 0);
+//   EXPECT_EQ(mq->sub_count, 1);
 
-//   ASSERT_EQ(hazcat_unregister_subscription(sub), RMW_RET_OK);
+//   EXPECT_EQ(hazcat_unregister_subscription(sub), RMW_RET_OK);
 
 //   // Reopen file
 //   char shmem_file[128] = "/ros2_hazcat";
@@ -391,12 +446,12 @@ TEST_F(MessageQueueTest, unregister_and_destroy) {
 //   // File should be empty, confirming it was deleted before
 //   struct stat st;
 //   fstat(fd, &st);
-//   ASSERT_EQ(st.st_size, 0);
+//   EXPECT_EQ(st.st_size, 0);
 
 //   // Now remove it again
-//   ASSERT_EQ(shm_unlink(mq_node->file_name), 0);
+//   EXPECT_EQ(shm_unlink(mq_node->file_name), 0);
 
-//   ASSERT_EQ(hazcat_fini(), RMW_RET_OK);
+//   EXPECT_EQ(hazcat_fini(), RMW_RET_OK);
 
 //   rmw_publisher_free(pub);
 //   rmw_subscription_free(sub);
@@ -441,125 +496,125 @@ TEST_F(MessageQueueTest, unregister_and_destroy) {
 //   sub->options = sub_opts;
 //   sub->can_loan_messages = true;
 
-//   ASSERT_EQ(hazcat_init(), RMW_RET_OK);
+//   EXPECT_EQ(hazcat_init(), RMW_RET_OK);
 
-//   ASSERT_EQ(hazcat_register_publisher(pub, &pub_qos), RMW_RET_OK);
+//   EXPECT_EQ(hazcat_register_publisher(pub, &pub_qos), RMW_RET_OK);
 
 //   mq_node_t * mq_node = pub_data->mq;
 //   message_queue_t * mq = mq_node->elem;
 //   ASSERT_STREQ(mq_node->file_name, "/ros2_hazcat.test");
 //   ASSERT_GT(mq_node->fd, 0);
 
-//   ASSERT_EQ(mq->index, 0);
-//   ASSERT_EQ(mq->len, 5);
-//   ASSERT_EQ(mq->num_domains, 1);
-//   ASSERT_EQ(mq->domains[0], alloc->untyped.domain);
-//   ASSERT_EQ(mq->pub_count, 1);
-//   ASSERT_EQ(mq->sub_count, 0);
+//   EXPECT_EQ(mq->index, 0);
+//   EXPECT_EQ(mq->len, 5);
+//   EXPECT_EQ(mq->num_domains, 1);
+//   EXPECT_EQ(mq->domains[0], alloc->untyped.domain);
+//   EXPECT_EQ(mq->pub_count, 1);
+//   EXPECT_EQ(mq->sub_count, 0);
 
-//   ASSERT_EQ(hazcat_register_subscription(sub, &sub_qos), RMW_RET_OK);
+//   EXPECT_EQ(hazcat_register_subscription(sub, &sub_qos), RMW_RET_OK);
 
-//   ASSERT_EQ(mq, sub_data->mq->elem);    // Should use same message queue
-//   ASSERT_EQ(mq_node, sub_data->mq);
-//   ASSERT_EQ(mq->index, 0);
-//   ASSERT_EQ(mq->len, 10);
-//   ASSERT_EQ(mq->num_domains, 1);
-//   ASSERT_EQ(mq->domains[0], alloc->untyped.domain);
-//   ASSERT_EQ(mq->pub_count, 1);
-//   ASSERT_EQ(mq->sub_count, 1);
+//   EXPECT_EQ(mq, sub_data->mq->elem);    // Should use same message queue
+//   EXPECT_EQ(mq_node, sub_data->mq);
+//   EXPECT_EQ(mq->index, 0);
+//   EXPECT_EQ(mq->len, 10);
+//   EXPECT_EQ(mq->num_domains, 1);
+//   EXPECT_EQ(mq->domains[0], alloc->untyped.domain);
+//   EXPECT_EQ(mq->pub_count, 1);
+//   EXPECT_EQ(mq->sub_count, 1);
 
 //   // Test pub and sub data
-//   ASSERT_EQ(pub_data->alloc, &alloc->untyped);    // Should reference allocator
-//   ASSERT_EQ(sub_data->alloc, &alloc->untyped);
-//   ASSERT_EQ(pub_data->next_index, 0);   // Should be waiting at front of message queue
-//   ASSERT_EQ(sub_data->next_index, 0);
-//   ASSERT_EQ(pub_data->array_num, 0);    // Should use same first domain
-//   ASSERT_EQ(sub_data->array_num, 0);
+//   EXPECT_EQ(pub_data->alloc, &alloc->untyped);    // Should reference allocator
+//   EXPECT_EQ(sub_data->alloc, &alloc->untyped);
+//   EXPECT_EQ(pub_data->next_index, 0);   // Should be waiting at front of message queue
+//   EXPECT_EQ(sub_data->next_index, 0);
+//   EXPECT_EQ(pub_data->array_num, 0);    // Should use same first domain
+//   EXPECT_EQ(sub_data->array_num, 0);
 
 //   // Test take, should expect empty message
 //   msg_ref_t msg_ref = hazcat_take(sub);
-//   ASSERT_EQ(msg_ref.alloc, nullptr);
-//   ASSERT_EQ(msg_ref.msg, nullptr);
+//   EXPECT_EQ(msg_ref.alloc, nullptr);
+//   EXPECT_EQ(msg_ref.msg, nullptr);
 
 //   // Test publish, message queue should update accordingly
 //   int msg_offset = ALLOCATE(alloc, 8);
 //   long * msg = GET_PTR(alloc, msg_offset, long);
-//   ASSERT_EQ(hazcat_publish(pub, msg), RMW_RET_OK);
-//   ASSERT_EQ(mq->index, 1);
+//   EXPECT_EQ(hazcat_publish(pub, msg), RMW_RET_OK);
+//   EXPECT_EQ(mq->index, 1);
 //   ref_bits_t * ref_bits = get_ref_bits(mq, 0);
 //   entry_t * entry = get_entry(mq, 0, 0);
-//   ASSERT_EQ(ref_bits->availability, 0x1);
-//   ASSERT_EQ(ref_bits->interest_count, 1);
-//   ASSERT_EQ(ref_bits->lock, 0);
-//   ASSERT_EQ(entry->alloc_shmem_id, alloc->shmem_id);
-//   ASSERT_EQ(entry->len, 8);
-//   ASSERT_EQ(entry->offset, msg_offset);
+//   EXPECT_EQ(ref_bits->availability, 0x1);
+//   EXPECT_EQ(ref_bits->interest_count, 1);
+//   EXPECT_EQ(ref_bits->lock, 0);
+//   EXPECT_EQ(entry->alloc_shmem_id, alloc->shmem_id);
+//   EXPECT_EQ(entry->len, 8);
+//   EXPECT_EQ(entry->offset, msg_offset);
 
 //   // Test take, should expect message just published
 //   msg_ref = hazcat_take(sub);
-//   ASSERT_EQ(msg_ref.msg, msg);
-//   ASSERT_EQ(msg_ref.alloc, (hma_allocator_t*)alloc);
-//   ASSERT_EQ(ref_bits->availability, 0x1);
-//   ASSERT_EQ(ref_bits->interest_count, 0);
-//   ASSERT_EQ(ref_bits->lock, 0);
-//   ASSERT_EQ(entry->alloc_shmem_id, alloc->shmem_id);
-//   ASSERT_EQ(entry->len, 8);
-//   ASSERT_EQ(entry->offset, msg_offset);
+//   EXPECT_EQ(msg_ref.msg, msg);
+//   EXPECT_EQ(msg_ref.alloc, (hma_allocator_t*)alloc);
+//   EXPECT_EQ(ref_bits->availability, 0x1);
+//   EXPECT_EQ(ref_bits->interest_count, 0);
+//   EXPECT_EQ(ref_bits->lock, 0);
+//   EXPECT_EQ(entry->alloc_shmem_id, alloc->shmem_id);
+//   EXPECT_EQ(entry->len, 8);
+//   EXPECT_EQ(entry->offset, msg_offset);
 
 //   // Test take, should expect empty message
 //   msg_ref = hazcat_take(sub);
-//   ASSERT_EQ(msg_ref.alloc, nullptr);
-//   ASSERT_EQ(msg_ref.msg, nullptr);
+//   EXPECT_EQ(msg_ref.alloc, nullptr);
+//   EXPECT_EQ(msg_ref.msg, nullptr);
 
 //   // Publish 2 messages
 //   int msg2_offset = ALLOCATE(alloc, 8);
 //   long * msg2 = GET_PTR(alloc, msg_offset, long);
 //   int msg3_offset = ALLOCATE(alloc, 8);
 //   long * msg3 = GET_PTR(alloc, msg_offset, long);
-//   ASSERT_EQ(hazcat_publish(pub, msg2), RMW_RET_OK);
-//   ASSERT_EQ(mq->index, 2);
-//   ASSERT_EQ(hazcat_publish(pub, msg3), RMW_RET_OK);
-//   ASSERT_EQ(mq->index, 3);
+//   EXPECT_EQ(hazcat_publish(pub, msg2), RMW_RET_OK);
+//   EXPECT_EQ(mq->index, 2);
+//   EXPECT_EQ(hazcat_publish(pub, msg3), RMW_RET_OK);
+//   EXPECT_EQ(mq->index, 3);
 //   ref_bits = get_ref_bits(mq, 1);
 //   entry = get_entry(mq, 0, 1);
-//   ASSERT_EQ(ref_bits->availability, 0x1);
-//   ASSERT_EQ(ref_bits->interest_count, 1);
-//   ASSERT_EQ(ref_bits->lock, 0);
-//   ASSERT_EQ(entry->alloc_shmem_id, alloc->shmem_id);
-//   ASSERT_EQ(entry->len, 8);
-//   ASSERT_EQ(entry->offset, msg2_offset);
+//   EXPECT_EQ(ref_bits->availability, 0x1);
+//   EXPECT_EQ(ref_bits->interest_count, 1);
+//   EXPECT_EQ(ref_bits->lock, 0);
+//   EXPECT_EQ(entry->alloc_shmem_id, alloc->shmem_id);
+//   EXPECT_EQ(entry->len, 8);
+//   EXPECT_EQ(entry->offset, msg2_offset);
 //   ref_bits = get_ref_bits(mq, 2);
 //   entry = get_entry(mq, 0, 2);
-//   ASSERT_EQ(ref_bits->availability, 0x1);
-//   ASSERT_EQ(ref_bits->interest_count, 1);
-//   ASSERT_EQ(ref_bits->lock, 0);
-//   ASSERT_EQ(entry->alloc_shmem_id, alloc->shmem_id);
-//   ASSERT_EQ(entry->len, 8);
-//   ASSERT_EQ(entry->offset, msg3_offset);
+//   EXPECT_EQ(ref_bits->availability, 0x1);
+//   EXPECT_EQ(ref_bits->interest_count, 1);
+//   EXPECT_EQ(ref_bits->lock, 0);
+//   EXPECT_EQ(entry->alloc_shmem_id, alloc->shmem_id);
+//   EXPECT_EQ(entry->len, 8);
+//   EXPECT_EQ(entry->offset, msg3_offset);
 
 //   // Test take, should only receive most recent message
 //   msg_ref = hazcat_take(sub);
-//   ASSERT_EQ(msg_ref.msg, msg3);
-//   ASSERT_EQ(msg_ref.alloc, (hma_allocator_t*)alloc);
-//   ASSERT_EQ(ref_bits->availability, 0x1);
-//   ASSERT_EQ(ref_bits->interest_count, 0);
-//   ASSERT_EQ(ref_bits->lock, 0);
-//   ASSERT_EQ(entry->alloc_shmem_id, alloc->shmem_id);
-//   ASSERT_EQ(entry->len, 8);
-//   ASSERT_EQ(entry->offset, msg3_offset);
+//   EXPECT_EQ(msg_ref.msg, msg3);
+//   EXPECT_EQ(msg_ref.alloc, (hma_allocator_t*)alloc);
+//   EXPECT_EQ(ref_bits->availability, 0x1);
+//   EXPECT_EQ(ref_bits->interest_count, 0);
+//   EXPECT_EQ(ref_bits->lock, 0);
+//   EXPECT_EQ(entry->alloc_shmem_id, alloc->shmem_id);
+//   EXPECT_EQ(entry->len, 8);
+//   EXPECT_EQ(entry->offset, msg3_offset);
 
 //   // Remove publisher
-//   ASSERT_EQ(hazcat_unregister_publisher(pub), RMW_RET_OK);
-//   ASSERT_EQ(mq->index, 3);
-//   ASSERT_EQ(mq->len, 10);
-//   ASSERT_EQ(mq->num_domains, 1);
-//   ASSERT_EQ(mq->domains[0], alloc->untyped.domain);
-//   ASSERT_EQ(mq->pub_count, 0);
-//   ASSERT_EQ(mq->sub_count, 1);
+//   EXPECT_EQ(hazcat_unregister_publisher(pub), RMW_RET_OK);
+//   EXPECT_EQ(mq->index, 3);
+//   EXPECT_EQ(mq->len, 10);
+//   EXPECT_EQ(mq->num_domains, 1);
+//   EXPECT_EQ(mq->domains[0], alloc->untyped.domain);
+//   EXPECT_EQ(mq->pub_count, 0);
+//   EXPECT_EQ(mq->sub_count, 1);
 
-//   ASSERT_EQ(hazcat_unregister_subscription(sub), RMW_RET_OK);
+//   EXPECT_EQ(hazcat_unregister_subscription(sub), RMW_RET_OK);
 
-//   ASSERT_EQ(hazcat_fini(), RMW_RET_OK);
+//   EXPECT_EQ(hazcat_fini(), RMW_RET_OK);
 
 //   rmw_publisher_free(pub);
 //   rmw_subscription_free(sub);

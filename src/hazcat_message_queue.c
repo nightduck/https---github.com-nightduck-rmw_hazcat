@@ -307,7 +307,7 @@ hazcat_register_subscription(rmw_subscription_t *sub)
 }
 
 rmw_ret_t
-hazcat_publish(rmw_publisher_t *pub, void *msg)
+hazcat_publish(rmw_publisher_t *pub, void *msg, size_t len)
 {
   // Acquire lock on shared file
   struct flock fl = {F_RDLCK, SEEK_SET, 0, 0, 0};
@@ -350,6 +350,7 @@ hazcat_publish(rmw_publisher_t *pub, void *msg)
   // Store token in appropriate array, converting message pointer to expected offset value
   entry->alloc_shmem_id = alloc->shmem_id;
   entry->offset = PTR_TO_OFFSET(alloc, msg);
+  entry->len = len;
 
   // Update reference bits
   ref_bits->availability = 1 << domain_col;
@@ -461,6 +462,13 @@ hazcat_take(rmw_subscription_t *sub)
       // Copy condition
       COPY(alloc, here, src_alloc, msg, entry->len);
     }
+
+    // Store our copy for others to use
+    int len = entry->len;
+    entry = get_entry(mq, ((pub_sub_data_t *)sub->data)->array_num, i);
+    entry->alloc_shmem_id = alloc->shmem_id;
+    entry->offset = PTR_TO_OFFSET(alloc, here);
+    entry->len = len;
 
     ret.alloc = alloc;
     ret.msg = here;

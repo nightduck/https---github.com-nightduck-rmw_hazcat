@@ -31,10 +31,30 @@
 #include <tuple>
 #include <vector>
 
+#include <cuda_runtime_api.h>
+#include <cuda.h>
+
 uint8_t deref(uint8_t * ptr)
 {
   return *ptr;
 }
+
+static inline void
+checkDrvError(CUresult res, const char * tok, const char * file, unsigned line)
+{
+  if (res != CUDA_SUCCESS) {
+    const char * errStr = NULL;
+    (void)cuGetErrorString(res, &errStr);
+    printf("%s:%d %sfailed (%d): %s\n", file, line, tok, (unsigned)res, errStr);
+    abort();
+  }
+}
+#define CHECK_DRV(x) checkDrvError(x, #x, __FILE__, __LINE__);
+#define CHECK(cudacall) { \
+  int err=cudacall; \
+  if (err!=cudaSuccess) \
+    std::cout<<"CUDA ERROR "<<err<<" at line "<<__LINE__<<"'s "<<#cudacall<<"\n"; \
+  }
 
 inline ref_bits_t *get_ref_bits(message_queue_t *mq, int i)
 {
@@ -167,8 +187,10 @@ TEST(HashtableTest, hashtable_test) {
   hashtable_fini(ht);
 }
 
-// Not a test, just always runs to remove any shared files created from previous tests
-TEST_F(MessageQueueTest, cleanup) {
+// Not a test, just resets 
+TEST_F(MessageQueueTest, setup) {
+  CHECK_DRV(cuInit(0)); // Initialize CUDA driver
+
   DIR *d;
   struct dirent *dir;
   d = opendir("/dev/shm/");
@@ -211,7 +233,7 @@ TEST_F(MessageQueueTest, creation_and_registration) {
 
   ASSERT_EQ(hazcat_init(), RMW_RET_OK);
 
-  EXPECT_EQ(hazcat_register_publisher(cpu_pub), RMW_RET_OK);
+  ASSERT_EQ(hazcat_register_publisher(cpu_pub), RMW_RET_OK);
 
   mq_node = pub_data->mq;
   message_queue_t * mq = mq_node->elem;
@@ -225,7 +247,7 @@ TEST_F(MessageQueueTest, creation_and_registration) {
   EXPECT_EQ(mq->pub_count, 1);
   EXPECT_EQ(mq->sub_count, 0);
 
-  EXPECT_EQ(hazcat_register_subscription(cpu_sub), RMW_RET_OK);
+  ASSERT_EQ(hazcat_register_subscription(cpu_sub), RMW_RET_OK);
 
   EXPECT_EQ(mq, sub_data->mq->elem);    // Should use same message queue
   EXPECT_EQ(mq_node, sub_data->mq);
@@ -258,7 +280,7 @@ TEST_F(MessageQueueTest, basic_rw) {
   long * msg1 = GET_PTR(cpu_alloc, msg1_offset, long);
   int msg2_offset = ALLOCATE(cpu_alloc, 8);
   long * msg2 = GET_PTR(cpu_alloc, msg2_offset, long);
-  EXPECT_EQ(hazcat_publish(cpu_pub, msg1), RMW_RET_OK);
+  ASSERT_EQ(hazcat_publish(cpu_pub, msg1, 8), RMW_RET_OK);
   EXPECT_EQ(mq->index, 1);
   ref_bits_t * ref_bits = get_ref_bits(mq, 0);
   entry_t * entry = get_entry(mq, 0, 0);
@@ -268,7 +290,7 @@ TEST_F(MessageQueueTest, basic_rw) {
   EXPECT_EQ(entry->alloc_shmem_id, cpu_alloc->shmem_id);
   EXPECT_EQ(entry->len, 8);
   EXPECT_EQ(entry->offset, msg1_offset);
-  EXPECT_EQ(hazcat_publish(cpu_pub, msg2), RMW_RET_OK);
+  ASSERT_EQ(hazcat_publish(cpu_pub, msg2, 8), RMW_RET_OK);
   EXPECT_EQ(mq->index, 2);
   ref_bits = get_ref_bits(mq, 1);
   entry = get_entry(mq, 0, 1);
@@ -297,34 +319,191 @@ TEST_F(MessageQueueTest, basic_rw) {
 }
 
 TEST_F(MessageQueueTest, multi_domain_registration) {
+  cpu_sub2 = rmw_subscription_allocate();
+  cuda_sub = rmw_subscription_allocate();
+  cuda_pub = rmw_publisher_allocate();
 
+  pub_sub_data_t * cpu_sub_data = (pub_sub_data_t*)rmw_allocate(sizeof(pub_sub_data_t));
+  pub_sub_data_t * cuda_sub_data = (pub_sub_data_t*)rmw_allocate(sizeof(pub_sub_data_t));
+  pub_sub_data_t * pub_data = (pub_sub_data_t*)rmw_allocate(sizeof(pub_sub_data_t));
+
+  // Populate subscriptions
+  cuda_alloc = create_cuda_ringbuf_allocator(8, 10);
+  pub_data->alloc = (hma_allocator_t*)cuda_alloc;
+  cuda_sub_data->alloc = (hma_allocator_t*)cuda_alloc;
+  cpu_sub_data->alloc = (hma_allocator_t*)cpu_alloc;
+  pub_data->depth = 5;
+  cpu_sub_data->depth = 10;
+  cuda_sub_data->depth = 10;
+
+  cuda_pub->implementation_identifier = rmw_get_implementation_identifier();
+  cuda_pub->data = pub_data;
+  cuda_pub->topic_name = "test";
+  cuda_pub->can_loan_messages = true;
+
+  cpu_sub2->implementation_identifier = rmw_get_implementation_identifier();
+  cpu_sub2->data = cpu_sub_data;
+  cpu_sub2->topic_name = "test";
+  cpu_sub2->can_loan_messages = true;
+
+  cuda_sub->implementation_identifier = rmw_get_implementation_identifier();
+  cuda_sub->data = cuda_sub_data;
+  cuda_sub->topic_name = "test";
+  cuda_sub->can_loan_messages = true;
+
+  message_queue_t * mq = mq_node->elem;
+
+  ASSERT_EQ(hazcat_register_subscription(cuda_sub), RMW_RET_OK);
+  EXPECT_EQ(mq_node, cuda_sub_data->mq);
+  EXPECT_EQ(mq, cuda_sub_data->mq->elem);
+  EXPECT_EQ(mq->index, 2);
+  EXPECT_EQ(mq->len, 10);
+  EXPECT_EQ(mq->num_domains, 2);
+  EXPECT_EQ(mq->domains[1], cuda_alloc->untyped.domain);
+  EXPECT_EQ(mq->pub_count, 1);
+  EXPECT_EQ(mq->sub_count, 2);
+
+  ASSERT_EQ(hazcat_register_publisher(cuda_pub), RMW_RET_OK);
+  EXPECT_EQ(mq_node, pub_data->mq);
+  EXPECT_EQ(mq, pub_data->mq->elem);
+  EXPECT_EQ(mq->index, 2);
+  EXPECT_EQ(mq->len, 10);
+  EXPECT_EQ(mq->num_domains, 2);
+  EXPECT_EQ(mq->domains[1], cuda_alloc->untyped.domain);
+  EXPECT_EQ(mq->pub_count, 2);
+  EXPECT_EQ(mq->sub_count, 2);
+
+
+  ASSERT_EQ(hazcat_register_subscription(cpu_sub2), RMW_RET_OK);
+  EXPECT_EQ(mq, cpu_sub_data->mq->elem);    // Should use same message queue
+  EXPECT_EQ(mq_node, cpu_sub_data->mq);
+  EXPECT_EQ(mq->index, 2);
+  EXPECT_EQ(mq->len, 10);
+  EXPECT_EQ(mq->num_domains, 2);
+  EXPECT_EQ(mq->domains[0], cpu_alloc->untyped.domain);
+  EXPECT_EQ(mq->pub_count, 2);
+  EXPECT_EQ(mq->sub_count, 3);
 }
 
-// TEST_F(MessageQueueTest, multi_domain_rw) {
+TEST_F(MessageQueueTest, multi_domain_rw) {
+  message_queue_t * mq = mq_node->elem;
+  ref_bits_t * ref_bits;
+  entry_t * entry;
+  msg_ref_t msg_ref;
 
-// }
+  // Publish on CPU
+  int msg1_offset = ALLOCATE(cpu_alloc, 8);
+  long * msg1 = GET_PTR(cpu_alloc, msg1_offset, long);
+  *msg1 = 0xDEADBEEF;
+  ASSERT_EQ(hazcat_publish(cpu_pub, msg1, 8), RMW_RET_OK);
+  EXPECT_EQ(mq->index, 3);
+  ref_bits = get_ref_bits(mq, 2);
+  entry = get_entry(mq, 0, 2);
+  EXPECT_EQ(ref_bits->availability, 0x1);
+  EXPECT_EQ(ref_bits->interest_count, 3);
+  EXPECT_EQ(ref_bits->lock, 0);
+  EXPECT_EQ(entry->alloc_shmem_id, cpu_alloc->shmem_id);
+  EXPECT_EQ(entry->len, 8);
+  EXPECT_EQ(entry->offset, msg1_offset);
 
-// TEST_F(MessageQueueTest, unregister_cuda) {
-//   message_queue_t * mq = MessageQueueTest::mq_node->elem;
-//   rmw_publisher_t * cuda_pub = MessageQueueTest::cuda_pub;
-//   rmw_subscription_t * cuda_sub = MessageQueueTest::cuda_sub;
+  // Read on CPU, verify message is same
+  msg_ref = hazcat_take(cpu_sub2);
+  EXPECT_EQ(msg_ref.msg, msg1);
+  EXPECT_EQ(msg_ref.alloc, (hma_allocator_t*)cpu_alloc);
+  EXPECT_EQ(ref_bits->availability, 0x1);
+  EXPECT_EQ(ref_bits->interest_count, 2);
+  EXPECT_EQ(ref_bits->lock, 0);
+  EXPECT_EQ(entry->alloc_shmem_id, cpu_alloc->shmem_id);
+  EXPECT_EQ(entry->len, 8);
+  EXPECT_EQ(entry->offset, msg1_offset);
 
-//   EXPECT_EQ(hazcat_unregister_publisher(cuda_pub), RMW_RET_OK);
+  // Read on GPU sub
+  msg_ref = hazcat_take(cuda_sub);
+  EXPECT_NE(msg_ref.msg, msg1);
+  EXPECT_EQ(msg_ref.alloc, (hma_allocator_t*)cuda_alloc);
+  EXPECT_EQ(ref_bits->availability, 0x3);
+  EXPECT_EQ(ref_bits->interest_count, 1);
+  EXPECT_EQ(ref_bits->lock, 0);
+  EXPECT_EQ(entry->alloc_shmem_id, cuda_alloc->shmem_id);
+  EXPECT_EQ(entry->len, 8);
 
-//   EXPECT_EQ(mq->pub_count, 1);
-//   EXPECT_EQ(mq->sub_count, 2);
+  // Take same message and republish on GPU pub
+  int msg2_offset = (uint8_t*)msg_ref.alloc - (uint8_t*)msg_ref.msg;
+  long * msg2 = (long*)msg_ref.msg;
+  ASSERT_EQ(hazcat_publish(cuda_pub, msg2, 8), RMW_RET_OK);
+  EXPECT_EQ(mq->index, 4);
+  ref_bits = get_ref_bits(mq, 3);
+  entry = get_entry(mq, 1, 3);
+  EXPECT_EQ(ref_bits->availability, 0x2);
+  EXPECT_EQ(ref_bits->interest_count, 3);
+  EXPECT_EQ(ref_bits->lock, 0);
+  EXPECT_EQ(entry->alloc_shmem_id, cuda_alloc->shmem_id);
+  EXPECT_EQ(entry->len, 8);
+  EXPECT_EQ(entry->offset, msg2_offset);
 
-//   EXPECT_EQ(hazcat_unregister_subscription(cuda_sub), RMW_RET_OK);
+  // Read on GPU sub, message addr should match, but be at separate entry in message queue
+  msg_ref = hazcat_take(cuda_sub);
+  EXPECT_EQ(msg_ref.msg, msg2);
+  EXPECT_NE(msg_ref.msg, msg1);
+  EXPECT_EQ(msg_ref.alloc, (hma_allocator_t*)cuda_alloc);
+  EXPECT_EQ(ref_bits->availability, 0x2);
+  EXPECT_EQ(ref_bits->interest_count, 2);
+  EXPECT_EQ(ref_bits->lock, 0);
+  EXPECT_EQ(entry->alloc_shmem_id, cuda_alloc->shmem_id);
+  EXPECT_EQ(entry->len, 8);
 
-//   EXPECT_EQ(mq->pub_count, 1);
-//   EXPECT_EQ(mq->sub_count, 1);
+  // Read on goldfish memory sub, verify correct entry was read and copied over
+  msg_ref = hazcat_take(cpu_sub);
+  long * cpu_msg2 = (long*)msg_ref.msg;
+  EXPECT_EQ(*cpu_msg2, *msg1);
+  EXPECT_NE(cpu_msg2, msg2);
+  EXPECT_NE(cpu_msg2, msg1);
+  EXPECT_EQ(msg_ref.alloc, (hma_allocator_t*)cpu_alloc);
+  EXPECT_EQ(ref_bits->availability, 0x3);
+  EXPECT_EQ(ref_bits->interest_count, 1);
+  EXPECT_EQ(ref_bits->lock, 0);
+  entry = get_entry(mq, 0, 3);
+  EXPECT_EQ(entry->alloc_shmem_id, cpu_alloc->shmem_id);
+  EXPECT_EQ(entry->len, 8);
+  EXPECT_EQ((uint8_t*)cpu_alloc + entry->offset, (uint8_t*)cpu_msg2);
 
-//   cuda_ringbuf_unmap((hma_allocator_t*)((pub_sub_data_t*)cuda_pub->data)->alloc);
-//   rmw_free(cuda_pub->data);
-//   rmw_free(cuda_sub->data);
-//   rmw_publisher_free(cuda_pub);
-//   rmw_subscription_free(cuda_sub);
-// }
+  // Read on other CPU sub, message addr should match previous sub read
+  msg_ref = hazcat_take(cpu_sub2);
+  EXPECT_EQ(msg_ref.msg, cpu_msg2);
+  EXPECT_EQ(msg_ref.alloc, (hma_allocator_t*)cpu_alloc);
+  EXPECT_EQ(ref_bits->availability, 0x3);
+  EXPECT_EQ(ref_bits->interest_count, 0);
+  EXPECT_EQ(ref_bits->lock, 0);
+}
+
+TEST_F(MessageQueueTest, unregister_cuda) {
+  message_queue_t * mq = MessageQueueTest::mq_node->elem;
+  rmw_publisher_t * cuda_pub = MessageQueueTest::cuda_pub;
+  rmw_subscription_t * cuda_sub = MessageQueueTest::cuda_sub;
+
+  EXPECT_EQ(hazcat_unregister_publisher(cuda_pub), RMW_RET_OK);
+
+  EXPECT_EQ(mq->pub_count, 1);
+  EXPECT_EQ(mq->sub_count, 3);
+
+  EXPECT_EQ(hazcat_unregister_subscription(cuda_sub), RMW_RET_OK);
+
+  EXPECT_EQ(mq->pub_count, 1);
+  EXPECT_EQ(mq->sub_count, 2);
+
+  EXPECT_EQ(hazcat_unregister_subscription(cpu_sub2), RMW_RET_OK);
+
+  EXPECT_EQ(mq->pub_count, 1);
+  EXPECT_EQ(mq->sub_count, 1);
+
+  cuda_ringbuf_unmap((hma_allocator_t*)((pub_sub_data_t*)cuda_pub->data)->alloc);
+  rmw_free(cuda_pub->data);
+  rmw_free(cuda_sub->data);
+  rmw_free(cpu_sub2->data);
+  rmw_publisher_free(cuda_pub);
+  rmw_subscription_free(cuda_sub);
+  rmw_subscription_free(cpu_sub2);
+}
 
 TEST_F(MessageQueueTest, unregister_and_destroy) {
   message_queue_t * mq = mq_node->elem;

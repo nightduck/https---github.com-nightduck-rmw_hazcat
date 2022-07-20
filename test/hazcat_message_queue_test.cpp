@@ -383,6 +383,16 @@ TEST_F(MessageQueueTest, multi_domain_registration) {
   EXPECT_EQ(mq->domains[0], cpu_alloc->untyped.domain);
   EXPECT_EQ(mq->pub_count, 2);
   EXPECT_EQ(mq->sub_count, 3);
+
+  // Test pub and sub data
+  EXPECT_EQ(pub_data->alloc, &cuda_alloc->untyped);    // Should reference allocator
+  EXPECT_EQ(cuda_sub_data->alloc, &cuda_alloc->untyped);
+  EXPECT_EQ(cpu_sub_data->alloc, &cpu_alloc->untyped);
+  EXPECT_EQ(cuda_sub_data->next_index, 2);  // Should be waiting at front of message queue
+  EXPECT_EQ(cpu_sub_data->next_index, 2);
+  EXPECT_EQ(pub_data->array_num, 1);    // Should use same first domain
+  EXPECT_EQ(cuda_sub_data->array_num, 1);
+  EXPECT_EQ(cpu_sub_data->array_num, 0);
 }
 
 TEST_F(MessageQueueTest, multi_domain_rw) {
@@ -424,11 +434,12 @@ TEST_F(MessageQueueTest, multi_domain_rw) {
   EXPECT_EQ(ref_bits->availability, 0x3);
   EXPECT_EQ(ref_bits->interest_count, 1);
   EXPECT_EQ(ref_bits->lock, 0);
+  entry = get_entry(mq, 1, 2);
   EXPECT_EQ(entry->alloc_shmem_id, cuda_alloc->shmem_id);
   EXPECT_EQ(entry->len, 8);
 
   // Take same message and republish on GPU pub
-  int msg2_offset = (uint8_t*)msg_ref.alloc - (uint8_t*)msg_ref.msg;
+  int msg2_offset = (uint8_t*)msg_ref.msg - (uint8_t*)msg_ref.alloc;
   long * msg2 = (long*)msg_ref.msg;
   ASSERT_EQ(hazcat_publish(cuda_pub, msg2, 8), RMW_RET_OK);
   EXPECT_EQ(mq->index, 4);
@@ -469,7 +480,7 @@ TEST_F(MessageQueueTest, multi_domain_rw) {
 
   // Read on other CPU sub, message addr should match previous sub read
   msg_ref = hazcat_take(cpu_sub2);
-  EXPECT_EQ(msg_ref.msg, cpu_msg2);
+  EXPECT_EQ(msg_ref.msg, (void*)cpu_msg2);
   EXPECT_EQ(msg_ref.alloc, (hma_allocator_t*)cpu_alloc);
   EXPECT_EQ(ref_bits->availability, 0x3);
   EXPECT_EQ(ref_bits->interest_count, 0);

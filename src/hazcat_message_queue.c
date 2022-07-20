@@ -193,6 +193,8 @@ hazcat_register_pub_or_sub(pub_sub_data_t *data, const char *topic_name)
   {
     if (data->alloc->domain == mq->domains[i])
     {
+      // Let pub or sub know where to find messages of their domain in this message queue
+      data->array_num = i;
       break;
     }
   }
@@ -205,6 +207,11 @@ hazcat_register_pub_or_sub(pub_sub_data_t *data, const char *topic_name)
       return RMW_RET_ERROR;
     }
 
+
+    // Let pub or sub know where to find messages of their domain in this message queue
+    data->array_num = mq->num_domains;
+
+    // Make note of this new domain
     mq->domains[mq->num_domains] = data->alloc->domain;
     mq->num_domains++;
     needs_resize = true;
@@ -228,7 +235,6 @@ hazcat_register_pub_or_sub(pub_sub_data_t *data, const char *topic_name)
   }
 
   // Let publisher know where to find its message queue
-  data->array_num = mq->num_domains - 1;
   data->mq = it;
 
   return RMW_RET_OK;
@@ -416,7 +422,6 @@ hazcat_take(rmw_subscription_t *sub)
     // Lookup src allocator with hashtable mapping shm id to mem address
     hma_allocator_t *src_alloc = hashtable_get(ht, entry->alloc_shmem_id);
 
-    msg_ref_t ret;
     void *msg = GET_PTR(src_alloc, entry->offset, void);
 
     // Zero copy condition. Increase ref count on message and use that without copy
@@ -441,8 +446,8 @@ hazcat_take(rmw_subscription_t *sub)
 
     void *msg = GET_PTR(src_alloc, entry->offset, void);
 
-    // Allocate space on the destination allocator
-    void *here = GET_PTR(alloc, ALLOCATE(alloc, entry->len), void);
+    // Allocate space on the destination allocator (const for compiler optimization)
+    const void *here = GET_PTR(alloc, ALLOCATE(alloc, entry->len), void);
     assert(here > alloc);
 
     int lookup_ind = alloc->strategy * NUM_DEV_TYPES + alloc->device_type;
@@ -469,6 +474,9 @@ hazcat_take(rmw_subscription_t *sub)
     entry->alloc_shmem_id = alloc->shmem_id;
     entry->offset = PTR_TO_OFFSET(alloc, here);
     entry->len = len;
+
+    // Enable this domain on the availability bitmask
+    ref_bits->availability |= (1 << ((pub_sub_data_t *)sub->data)->array_num);
 
     ret.alloc = alloc;
     ret.msg = here;

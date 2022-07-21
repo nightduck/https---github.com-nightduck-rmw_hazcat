@@ -1,11 +1,11 @@
 // Copyright 2022 Washington University in St Louis
-
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -62,16 +62,17 @@ rmw_create_subscription(
   pub_sub_data_t * data = rmw_allocate(sizeof(pub_sub_data_t));
 
   // Populate data->alloc with allocator specified and data->history with qos setting
-  data->alloc = (hma_allocator_t*)subscription_options->rmw_specific_subscription_payload;
+  data->alloc = (hma_allocator_t *)subscription_options->rmw_specific_subscription_payload;
   data->depth = qos_policies->depth;
 
+  size_t len = strlen(topic_name);
   sub->implementation_identifier = rmw_get_implementation_identifier();
   sub->data = data;
-  sub->topic_name = rmw_allocate(strlen(topic_name));
+  sub->topic_name = rmw_allocate(len);
   sub->options = *subscription_options;
   sub->can_loan_messages = true;
 
-  strcpy(sub->topic_name, topic_name);
+  snprintf(sub->topic_name, len, topic_name);
 
   hazcat_register_subscription(sub);
 

@@ -1,11 +1,11 @@
 // Copyright 2022 Washington University in St Louis
-
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -61,15 +61,16 @@ rmw_create_publisher(
   pub_sub_data_t * data = rmw_allocate(sizeof(pub_sub_data_t));
 
   // Populate data->alloc with allocator specified (all other fields are set during registration)
-  data->alloc = (hma_allocator_t*)publisher_options->rmw_specific_publisher_payload;
+  data->alloc = (hma_allocator_t *)publisher_options->rmw_specific_publisher_payload;
 
+  size_t len = strlen(topic_name);
   pub->implementation_identifier = rmw_get_implementation_identifier();
   pub->data = data;
-  pub->topic_name = rmw_allocate(strlen(topic_name));
+  pub->topic_name = rmw_allocate(len);
   pub->options = *publisher_options;
   pub->can_loan_messages = true;
 
-  strcpy(pub->topic_name, topic_name);
+  snprintf(pub->topic_name, len, topic_name);
 
   hazcat_register_publisher(pub);
 
@@ -182,7 +183,7 @@ rmw_return_loaned_message_from_publisher(const rmw_publisher_t * publisher, void
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_ERROR);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(loaned_message, RMW_RET_ERROR);
-  
+
   RMW_SET_ERROR_MSG("rmw_return_loaned_message_from_publisher hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
 }

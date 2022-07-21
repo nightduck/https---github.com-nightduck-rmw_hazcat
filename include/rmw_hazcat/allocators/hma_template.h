@@ -1,19 +1,19 @@
 // Copyright 2022 Washington University in St Louis
-
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef HMA_ALLOCATOR_H
-#define HMA_ALLOCATOR_H
+#ifndef RMW_HAZCAT__ALLOCATORS__HMA_TEMPLATE_H_
+#define RMW_HAZCAT__ALLOCATORS__HMA_TEMPLATE_H_
 
 #ifdef __cplusplus
 extern "C"
@@ -32,11 +32,11 @@ extern "C"
 #include <sys/mman.h>
 #include <unistd.h>
 
-#define OFFSET_TO_PTR(a, o, type) (type*)(uint8_t *)a + o
+#define OFFSET_TO_PTR(a, o, type) (type *)(uint8_t *)a + o
 #define PTR_TO_OFFSET(a, p) (uint8_t *)p - (uint8_t *)a
 
 #define handle_error(msg) \
-  do { perror(msg); exit(EXIT_FAILURE); } while (0)
+  do {perror(msg); exit(EXIT_FAILURE);} while (0)
 
 #define MAX_POOL_SIZE   0x100000000
 
@@ -53,12 +53,11 @@ extern "C"
 #define DEVICE          0x002   // Not for use, indicates max
 #define NUM_DEV_TYPES   0x2
 
-#define LOCAL_GRANULARITY   (__getpagesize ())
+#define LOCAL_GRANULARITY   (__getpagesize())
 #define SHARED_GRANULARITY  SHMLBA
 
-#define LOCAL_ALIGNMENT(a, t)   (uint8_t*)a - ((uint8_t*)a % LOCAL_GRANULARITY)
-#define SHARED_ALIGNMENT(a, t)  (uint8_t*)a + sizeof(fps_t)
-//BROKEN#define DEVICE_ALIGNMENT(a, t)  (uint8_t*)(((long)a + sizeof(fps_t)) / SHARED_GRANULARITY * SHARED_GRANULARITY + SHARED_GRANULARITY)
+#define LOCAL_ALIGNMENT(a, t)   (uint8_t *)a - ((uint8_t *)a % LOCAL_GRANULARITY)
+#define SHARED_ALIGNMENT(a, t)  (uint8_t *)a + sizeof(fps_t)
 
 /*
   // Copy paste at head of new allocators, so first 34 bytes can be cast as an hma_allocator
@@ -77,19 +76,20 @@ extern "C"
 
 typedef struct hma_allocator
 {
-  int  (* allocate)   (void *, size_t);
-  void (* share)      (void *, int);
-  void (* deallocate) (void *, int);
-  void (* copy_from)  (void *, void *, size_t);
-  void (* copy_to)    (void *, void *, size_t);
-  void (* copy)       (void *, void *, size_t, struct hma_allocator *);
+  int (* allocate)(void *, size_t);
+  void (* share)(void *, int);
+  void (* deallocate)(void *, int);
+  void (* copy_from)(void *, void *, size_t);
+  void (* copy_to)(void *, void *, size_t);
+  void (* copy)(void *, void *, size_t, struct hma_allocator *);
   void * data;   // Implementation specific stuff
 
-  //----Boundary between local memory and shared memory mapping occurs here---
+  // ---Boundary between local memory and shared memory mapping occurs here---
 
   int shmem_id;
   union {   // Only allocators in same domain (same device) can use each other's memory
-    struct {
+    struct
+    {
       uint16_t device_type;
       uint16_t device_number;
     };
@@ -98,13 +98,14 @@ typedef struct hma_allocator
   uint16_t strategy;
 } hma_allocator_t;
 
-typedef struct function_pointers {
-  int  (* allocate)   (void *, size_t);
-  void (* share)      (void *, int);
-  void (* deallocate) (void *, int);
-  void (* copy_from)  (void *, void *, size_t);
-  void (* copy_to)    (void *, void *, size_t);
-  void (* copy)       (void *, void *, size_t, hma_allocator_t *);
+typedef struct function_pointers
+{
+  int (* allocate)(void *, size_t);
+  void (* share)(void *, int);
+  void (* deallocate)(void *, int);
+  void (* copy_from)(void *, void *, size_t);
+  void (* copy_to)(void *, void *, size_t);
+  void (* copy)(void *, void *, size_t, hma_allocator_t *);
   void * data;  // Implementation specific stuff, usually to accomodate finicky device memory
 } fps_t;
 
@@ -113,7 +114,8 @@ typedef struct function_pointers {
 //   struct hma_allocator * alloc_dest);
 
 // Calculates LCM of a and b. Used to reproducibly position allocators in virtual memory
-static inline int lcm(int a, int b) {
+static inline int lcm(int a, int b)
+{
   int temp, a0 = a, b0 = b;
   while (a != 0 && b != 0) {
     temp = a % b;
@@ -129,13 +131,13 @@ static inline int lcm(int a, int b) {
 // device memory are both honored. Pages not readable and must be overwritten
 void * reserve_memory_for_allocator(size_t shared_size, size_t dev_size, size_t dev_granularity);
 
-// TODO: Update documentation
+// TODO(nightduck): Update documentation
 // Don't call this outside this library
 struct hma_allocator * create_shared_allocator(
   void * hint, size_t alloc_size, size_t pool_size, size_t dev_granularity, uint16_t strategy,
   uint16_t device_type, uint8_t device_number);
 
-// TODO: Update documentation
+// TODO(nightduck): Update documentation
 // Do call this
 struct hma_allocator * remap_shared_allocator(int shmem_id);
 
@@ -148,18 +150,20 @@ void cpu_copy_from(void * alloc_mem, void * cpu_mem, size_t size);
 void cpu_copy_to(void * alloc_mem, void * cpu_mem, size_t size);
 void cpu_copy(struct hma_allocator * dest_alloc, void * there, void * here, size_t size);
 
-extern int (*allocate_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, size_t);
-extern void (*share_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, int);
-extern void (*deallocate_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, int);
-extern void (*copy_from_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, void *, size_t);
-extern void (*copy_to_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, void *, size_t);
-extern void (*copy_fps[NUM_STRATS * NUM_DEV_TYPES])(struct hma_allocator *, void *, void *, size_t);
-extern struct hma_allocator * (*remap_fps[NUM_STRATS * NUM_DEV_TYPES])(struct hma_allocator *);
-extern void (*unmap_fps[NUM_STRATS * NUM_DEV_TYPES])(struct hma_allocator *);
+extern int (* allocate_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, size_t);
+extern void (* share_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, int);
+extern void (* deallocate_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, int);
+extern void (* copy_from_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, void *, size_t);
+extern void (* copy_to_fps[NUM_STRATS * NUM_DEV_TYPES])(void *, void *, size_t);
+extern void (* copy_fps[NUM_STRATS * NUM_DEV_TYPES])(
+  struct hma_allocator *, void *, void *,
+  size_t);
+extern struct hma_allocator * (* remap_fps[NUM_STRATS * NUM_DEV_TYPES])(struct hma_allocator *);
+extern void (* unmap_fps[NUM_STRATS * NUM_DEV_TYPES])(struct hma_allocator *);
 
 // Converts offset generated by alloc's allocate function into a pointer to type
 #define GET_PTR(alloc, offset, type) \
-  (type*)((uint8_t*)alloc + offset)
+  (type *)((uint8_t *)alloc + offset)
 
 // Requests an allocation from alloc of size size
 #define ALLOCATE(alloc, size) \
@@ -169,7 +173,7 @@ extern void (*unmap_fps[NUM_STRATS * NUM_DEV_TYPES])(struct hma_allocator *);
 #define SHARE(alloc, offset) \
   (share_fps[alloc->strategy * NUM_DEV_TYPES + alloc->device_type])(alloc, offset)
 
-// TODO: Rename to free
+// TODO(nightduck): Rename to free
 // Deallocates memory at offset previously generated by alloc
 #define DEALLOCATE(alloc, offset) \
   (deallocate_fps[alloc->strategy * NUM_DEV_TYPES + alloc->device_type])(alloc, offset)
@@ -190,4 +194,4 @@ extern void (*unmap_fps[NUM_STRATS * NUM_DEV_TYPES])(struct hma_allocator *);
 }
 #endif
 
-#endif // HMA_ALLOCATOR_H
+#endif  // RMW_HAZCAT__ALLOCATORS__HMA_TEMPLATE_H_

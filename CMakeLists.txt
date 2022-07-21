@@ -5,13 +5,13 @@ project(rmw_hazcat CUDA CXX C)
 # Default to C11
 if(NOT CMAKE_C_STANDARD)
   set(CMAKE_C_STANDARD 11)
-  set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -Wall -O3 -fPIC" )
+  set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -Wall -O3 -fPIC")
 endif()
 
 # Default to C++14
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wall --std=c++11 -O3 -fPIC" )
+  set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wall --std=c++11 -O3 -fPIC")
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -28,7 +28,7 @@ find_package(rosidl_typesupport_introspection_c REQUIRED)
 
 set(CUDA_SEPARABLE_COMPILATION ON)
 cuda_select_nvcc_arch_flags(ARCH_FLAGS Auto)
-SET(CUDA_NVCC_FLAGS ${ARCH_FLAGS} CACHE STRING "nvcc flags" FORCE)
+set(CUDA_NVCC_FLAGS ${ARCH_FLAGS} CACHE STRING "nvcc flags" FORCE)
 
 include_directories(include)
 
@@ -116,7 +116,7 @@ if(BUILD_TESTING)
   ament_add_gtest(allocator_cpu_test test/hazcat_cpu_allocator_test.cpp)
   target_link_libraries(allocator_cpu_test hazcat_allocators)
   ament_target_dependencies(allocator_cpu_test
-    test_msgs std_msgs 
+    test_msgs std_msgs
     rcutils
   )
 

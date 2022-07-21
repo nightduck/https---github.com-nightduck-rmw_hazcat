@@ -1,21 +1,16 @@
 // Copyright 2022 Washington University in St Louis
-
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-#include "test_msgs/msg/bounded_sequences.hpp"
-#include "std_msgs/msg/int32.hpp"
-
-#include "rmw_hazcat/allocators/cuda_ringbuf_allocator.h"
 
 #include <cuda_runtime_api.h>
 #include <cuda.h>
@@ -25,6 +20,11 @@
 #include <string>
 #include <tuple>
 #include <vector>
+
+#include "test_msgs/msg/bounded_sequences.hpp"
+#include "std_msgs/msg/int32.hpp"
+
+#include "rmw_hazcat/allocators/cuda_ringbuf_allocator.h"
 
 static inline void
 checkDrvError(CUresult res, const char * tok, const char * file, unsigned line)
@@ -37,28 +37,25 @@ checkDrvError(CUresult res, const char * tok, const char * file, unsigned line)
   }
 }
 #define CHECK_DRV(x) checkDrvError(x, #x, __FILE__, __LINE__);
-#define CHECK(cudacall) { \
-  int err=cudacall; \
-  if (err!=cudaSuccess) \
-    std::cout<<"CUDA ERROR "<<err<<" at line "<<__LINE__<<"'s "<<#cudacall<<"\n"; \
-  }
 
 uint8_t deref(uint8_t * ptr)
 {
   return *ptr;
 }
 
-__global__ void cuda_assert_eq(float* d_in, const float val) {
+__global__ void cuda_assert_eq(float * d_in, const float val)
+{
   printf("%f\n", *d_in);
   assert(*d_in == val);
 }
 
 TEST(AllocatorTest, struct_ordering_test) {
-  EXPECT_EQ(offsetof(hma_allocator, shmem_id),      offsetof(cuda_ringbuf_allocator, shmem_id));
-  EXPECT_EQ(offsetof(hma_allocator, strategy),      offsetof(cuda_ringbuf_allocator, strategy));
-  EXPECT_EQ(offsetof(hma_allocator, device_type),   offsetof(cuda_ringbuf_allocator, device_type));
-  EXPECT_EQ(offsetof(hma_allocator, device_number), offsetof(cuda_ringbuf_allocator, device_number));
-  EXPECT_EQ(offsetof(hma_allocator, domain),        offsetof(cuda_ringbuf_allocator, device_type));
+  using alloc_type = cuda_ringbuf_allocator;
+  EXPECT_EQ(offsetof(hma_allocator, shmem_id), offsetof(alloc_type, shmem_id));
+  EXPECT_EQ(offsetof(hma_allocator, strategy), offsetof(alloc_type, strategy));
+  EXPECT_EQ(offsetof(hma_allocator, device_type), offsetof(alloc_type, device_type));
+  EXPECT_EQ(offsetof(hma_allocator, device_number), offsetof(alloc_type, device_number));
+  EXPECT_EQ(offsetof(hma_allocator, domain), offsetof(alloc_type, device_type));
 }
 
 TEST(AllocatorTest, cuda_ringbuf_creation_test)
@@ -74,7 +71,7 @@ TEST(AllocatorTest, cuda_ringbuf_creation_test)
   EXPECT_EQ(alloc->rear_it, 0);
   EXPECT_EQ(alloc->item_size, 6);
   EXPECT_GE(alloc->ring_size, 30);
-  
+
   unmap_shared_allocator((struct hma_allocator *)alloc);
 
   EXPECT_EQ(shmat(id, NULL, 0), (void *)-1);
@@ -98,7 +95,7 @@ TEST(AllocatorTest, cuda_ringbuf_allocate_rw_test)
   CHECK_DRV(cuMemGetAllocationGranularity(&gran, &props, CU_MEM_ALLOC_GRANULARITY_MINIMUM));
 
   CHECK_DRV(cuInit(0));
-  size_t allocation_size = sizeof(float) + gran/4;
+  size_t allocation_size = sizeof(float) + gran / 4;
   struct cuda_ringbuf_allocator * alloc = create_cuda_ringbuf_allocator(allocation_size, 3);
 
   // Make 4 allocations even though there's only room for 3
@@ -113,16 +110,16 @@ TEST(AllocatorTest, cuda_ringbuf_allocate_rw_test)
   int a3 = ALLOCATE(alloc, 0);
   EXPECT_EQ(alloc->count, 3);
   EXPECT_EQ(alloc->rear_it, 0);
-  EXPECT_EQ(a3 - a1, 2* allocation_size);
+  EXPECT_EQ(a3 - a1, 2 * allocation_size);
   int a4 = ALLOCATE(alloc, 0);
   EXPECT_EQ(alloc->count, 3);
   EXPECT_EQ(alloc->rear_it, 0);
   EXPECT_EQ(a4, -1);
 
   // Assign data into these allocations
-  float * d_data1 = (float*)((uint8_t*)alloc + a1);
-  float * d_data2 = (float*)((uint8_t*)alloc + a2);
-  float * d_data3 = (float*)((uint8_t*)alloc + a3);
+  float * d_data1 = reinterpret_cast<float *>((reinterpret_cast<uint8_t *>(alloc) + a1));
+  float * d_data2 = reinterpret_cast<float *>((reinterpret_cast<uint8_t *>(alloc) + a2));
+  float * d_data3 = reinterpret_cast<float *>((reinterpret_cast<uint8_t *>(alloc) + a3));
   float h_data1 = 4.5;
   float h_data2 = 2.25;
   float h_data3 = 1.125;
@@ -157,8 +154,8 @@ TEST(AllocatorTest, cuda_ringbuf_allocate_rw_test)
   EXPECT_EQ(a6, a2);
 
   // Resolve pointers, but don't assign data, they should see old data (artificial leak)
-  float * d_data5 = (float*)((uint8_t*)alloc + a5);
-  float * d_data6 = (float*)((uint8_t*)alloc + a6);
+  float * d_data5 = reinterpret_cast<float *>((reinterpret_cast<uint8_t *>(alloc) + a5));
+  float * d_data6 = reinterpret_cast<float *>((reinterpret_cast<uint8_t *>(alloc) + a6));
 
   EXPECT_EQ(d_data5, d_data1);
   EXPECT_EQ(d_data6, d_data2);
@@ -176,8 +173,9 @@ TEST(AllocatorTest, cuda_ringbuf_allocate_rw_test)
 TEST(AllocatorTest, cuda_ringbuf_share_deallocate_test)
 {
   cuda_ringbuf_allocator_t * alloc = create_cuda_ringbuf_allocator(8, 3);
-  int* ref_array = (int*)((uint8_t*)alloc + sizeof(cuda_ringbuf_allocator_t));
-  
+  int * ref_array = reinterpret_cast<int *>(reinterpret_cast<uint8_t *>(alloc) +
+    sizeof(cuda_ringbuf_allocator_t));
+
   // Make 3 allocations
   int a1 = ALLOCATE(alloc, 0);
   int a2 = ALLOCATE(alloc, 0);
@@ -236,7 +234,7 @@ TEST(AllocatorTest, cuda_ringbuf_share_deallocate_test)
   EXPECT_EQ(alloc->count, 0);
   EXPECT_EQ(alloc->rear_it, 0);
   DEALLOCATE(alloc, a3);
-  EXPECT_EQ(ref_array[2], 0);    // Allocator detect it's empty, so this ref counter doesn't get modified
+  EXPECT_EQ(ref_array[2], 0);
   EXPECT_EQ(alloc->count, 0);
   EXPECT_EQ(alloc->rear_it, 0);
 
@@ -244,12 +242,13 @@ TEST(AllocatorTest, cuda_ringbuf_share_deallocate_test)
   unmap_shared_allocator((struct hma_allocator *)alloc);
 }
 
-// TODO: Test copy method when an allocator from a different domain is written
+// TODO(nightduck): Test copy method when an allocator from a different domain is written
 
 TEST(AllocatorTest, cuda_ringbuf_remap_test)
 {
   cuda_ringbuf_allocator_t * alloc = create_cuda_ringbuf_allocator(8, 3);
-  int* ref_array = (int*)((uint8_t*)alloc + sizeof(cuda_ringbuf_allocator_t));
+  int * ref_array = reinterpret_cast<int *>(reinterpret_cast<uint8_t *>(alloc) +
+    sizeof(cuda_ringbuf_allocator_t));
 
   // Make 3 allocations
   int a1 = ALLOCATE(alloc, 0);
@@ -263,18 +262,18 @@ TEST(AllocatorTest, cuda_ringbuf_remap_test)
 
   hma_allocator_t * alloc2 = remap_shared_allocator(alloc->shmem_id);
 
-  EXPECT_NE((void*)alloc, (void*)alloc2);
+  EXPECT_NE((void *)alloc, (void *)alloc2);
 
   // Contents of remapped allocator should be identical (local portion can differ)
-  int sz = (sizeof(cuda_ringbuf_allocator_t) + sizeof(int) * 3)/sizeof(int);
-  for(int i = sizeof(fps_t); i < sz; i++) {
-    EXPECT_EQ(((int*)alloc)[i], ((int*)alloc2)[i]);
+  int sz = (sizeof(cuda_ringbuf_allocator_t) + sizeof(int) * 3) / sizeof(int);
+  for (int i = sizeof(fps_t); i < sz; i++) {
+    EXPECT_EQ(reinterpret_cast<int *>(alloc)[i], reinterpret_cast<int *>(alloc2)[i]);
   }
 
-  // TODO: Compare they have the same device boundary
+  // TODO(nightduck): Compare they have the same device boundary
 
   // Unmap initial allocator
-  unmap_shared_allocator((hma_allocator_t*)alloc);
+  unmap_shared_allocator(reinterpret_cast<hma_allocator_t *>(alloc));
 
   // Allocator should still exist and be attachable
   void * temp = shmat(alloc2->shmem_id, NULL, 0);
@@ -283,7 +282,7 @@ TEST(AllocatorTest, cuda_ringbuf_remap_test)
 
   // Unmap 2nd allocator
   int id = alloc2->shmem_id;
-  unmap_shared_allocator((hma_allocator_t*)alloc2);
+  unmap_shared_allocator(reinterpret_cast<hma_allocator_t *>(alloc2));
 
   // Should no longer be able to attach
   EXPECT_EQ(shmat(id, NULL, 0), (void *)-1);

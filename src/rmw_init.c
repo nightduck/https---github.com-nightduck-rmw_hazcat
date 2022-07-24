@@ -15,6 +15,8 @@
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
 
+#include "rmw_hazcat/hazcat_message_queue.h"
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -54,8 +56,11 @@ rmw_init(const rmw_init_options_t * options, rmw_context_t * context)
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(options, RMW_RET_ERROR);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, RMW_RET_ERROR);
 
-  RMW_SET_ERROR_MSG("rmw_init hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  #ifdef CUDA
+  CHECK_DRV(cuInit(0));
+  #endif
+
+  return hazcat_init();
 }
 
 rmw_ret_t
@@ -63,8 +68,7 @@ rmw_shutdown(rmw_context_t * context)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, RMW_RET_ERROR);
 
-  RMW_SET_ERROR_MSG("rmw_shutdown hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  return hazcat_fini();
 }
 
 rmw_ret_t

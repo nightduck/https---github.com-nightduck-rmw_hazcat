@@ -28,9 +28,29 @@ rmw_serialize(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(ros_message, RMW_RET_ERROR);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_supports, RMW_RET_ERROR);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(serialized_message, RMW_RET_ERROR);
+  rmw_ret_t ret;
 
-  RMW_SET_ERROR_MSG("rmw_serialize hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  // TODO: This is a bunch of pseudocode referencing nonexistant functions, fill in gaps
+  if (type_supports->fixed_size) {
+    if (ret = rmw_serialized_message_resize(serialized_message, type_supports->message_size)
+      != RMW_RET_OK)
+    {
+      RMW_SET_ERROR_MSG("Cannot resize serialized message");
+      return ret;
+    }
+    memcpy(serialized_message, ros_message, type_supports->message_size);
+    return RMW_RET_OK;
+  }
+
+  size_t len;
+  if (ret = rmw_get_serialized_message_size(type_supports, ???, &len) != RMW_RET_OK) {
+    RMW_SET_ERROR_MSG("Unable to get size of serialized message");
+    return ret;
+  }
+  rmw_serialized_message_resize(serialized_message, len);
+  serialize_message(serialized_message, ros_message, type_supports);
+
+  return RMW_RET_OK;
 }
 
 rmw_ret_t
@@ -57,8 +77,13 @@ rmw_get_serialized_message_size(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(message_bounds, RMW_RET_ERROR);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(size, RMW_RET_ERROR);
 
-  RMW_SET_ERROR_MSG("rmw_get_serialized_message_size hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  rosidl_message_type_support * ts_c = get_message_typesupport_handle(
+    type_supports, rosidl_typesupport_introspection_c__identifier);
+
+  const rosidl_typesupport_introspection_c__MessageMembers * members = 
+    (const rosidl_typesupport_introspection_c__MessageMembers *)ts_c->data;
+
+  return members->size_of_;
 }
 #ifdef __cplusplus
 }

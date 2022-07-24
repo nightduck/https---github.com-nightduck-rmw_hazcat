@@ -30,11 +30,41 @@ rmw_create_node(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, NULL);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(name, NULL);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(namespace_, NULL);
-  (void)domain_id;
-  (void)localhost_only;
 
-  RMW_SET_ERROR_MSG("rmw_create_node hasn't been implemented yet");
-  return NULL;
+  RMW_CHECK_TYPE_IDENTIFIERS_MATCH(
+    rmw_create_node
+    : context, context->implementation_identifier,
+    rmw_get_implementation_identifier(), return NULL);
+
+  rmw_node_t * node = rmw_node_allocate();
+  if (node == NULL) {
+    RMW_SET_ERROR_MSG("failed to allocate memory for node handle");
+    return NULL;
+  }
+  node->implementation_identifier = rmw_get_implementation_identifier();
+
+  node->data = NULL;
+
+  node->name = rmw_allocate(strlen(name) + 1);
+  if (node == NULL) {
+    RMW_SET_ERROR_MSG("failed to allocate memory for node name string");
+    rmw_free(node);
+    return NULL;
+  }
+  snprintf(node->name, strlen(name) + 1, name);
+
+  node->namespace_ = rmw_allocate(strlen(namespace_) + 1);
+  if (node == NULL) {
+    RMW_SET_ERROR_MSG("failed to allocate memory for node namespace string");
+    rmw_free(node->name);
+    rmw_free(node);
+    return NULL;
+  }
+  snprintf(node->namespace_, strlen(namespace_) + 1, namespace_);
+
+  node->context = context;
+
+  return node;
 }
 
 rmw_ret_t
@@ -42,8 +72,11 @@ rmw_destroy_node(rmw_node_t * node)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
 
-  RMW_SET_ERROR_MSG("rmw_destroy_node hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  rmw_free(node->namespace_);
+  rmw_free(node->name);
+  rmw_free(node);
+
+  return RMW_RET_OK;
 }
 
 rmw_ret_t
@@ -51,7 +84,7 @@ rmw_node_assert_liveliness(const rmw_node_t * node)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
 
-  RMW_SET_ERROR_MSG("rmw_node_assert_liveliness hasn't been implemented yet");
+  RMW_SET_ERROR_MSG("rmw_node_assert_liveliness has been deprecated");
   return RMW_RET_UNSUPPORTED;
 }
 

@@ -31,10 +31,9 @@ rmw_create_node(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(name, NULL);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(namespace_, NULL);
 
-  RMW_CHECK_TYPE_IDENTIFIERS_MATCH(
-    rmw_create_node
-    : context, context->implementation_identifier,
-    rmw_get_implementation_identifier(), return NULL);
+  if (context->implementation_identifier != rmw_get_implementation_identifier()) {
+    return NULL;
+  }
 
   rmw_node_t * node = rmw_node_allocate();
   if (node == NULL) {

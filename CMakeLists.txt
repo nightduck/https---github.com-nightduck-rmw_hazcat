@@ -50,6 +50,7 @@ set(rmw_hazcat_sources
   src/rmw_count.c
   src/rmw_get_implementation_identifier.c
   src/rmw_get_serialization_format.c
+  src/rmw_guard_condition.c
   src/rmw_init.c
   src/rmw_node.c
   src/rmw_publisher.c

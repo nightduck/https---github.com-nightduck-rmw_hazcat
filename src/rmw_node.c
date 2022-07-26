@@ -15,6 +15,8 @@
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
 
+#include "rmw_hazcat/hazcat_node.h"
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -42,7 +44,8 @@ rmw_create_node(
   }
   node->implementation_identifier = rmw_get_implementation_identifier();
 
-  node->data = NULL;
+  node->data = rmw_allocate(sizeof(node_info_t));
+  ((construct_node_info__*)node->data)->guard_condition = rmw_create_guard_condition(context);
 
   node->name = rmw_allocate(strlen(name) + 1);
   if (node == NULL) {
@@ -73,6 +76,7 @@ rmw_destroy_node(rmw_node_t * node)
 
   rmw_free(node->namespace_);
   rmw_free(node->name);
+  rmw_free(node->data);
   rmw_free(node);
 
   return RMW_RET_OK;
@@ -92,8 +96,7 @@ rmw_node_get_graph_guard_condition(const rmw_node_t * node)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, NULL);
 
-  RMW_SET_ERROR_MSG("rmw_node_get_graph_guard_condition hasn't been implemented yet");
-  return NULL;
+  return ((node_info_t*)node->data)->guard_condition_;
 }
 
 rmw_ret_t

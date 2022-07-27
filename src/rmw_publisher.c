@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
+#include "rmw/get_topic_endpoint_info.h"
 #include "rmw_hazcat/hazcat_message_queue.h"
 
 #ifdef __cplusplus
@@ -199,6 +201,21 @@ rmw_publish_loaned_message(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocation, RMW_RET_ERROR);
 
   RMW_SET_ERROR_MSG("rmw_publish_loaned_message hasn't been implemented yet");
+  return RMW_RET_UNSUPPORTED;
+}
+
+rmw_ret_t rmw_get_publishers_info_by_topic(
+  const rmw_node_t * node, rcutils_allocator_t * allocator,
+  const char * topic_name, bool no_mangle,
+  rmw_topic_endpoint_info_array_t * publishers_info)
+{
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocator, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(topic_name, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(publishers_info, RMW_RET_ERROR);
+  (void)no_mangle;
+
+  RMW_SET_ERROR_MSG("rmw_get_publishers_info_by_topic hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
 }
 #ifdef __cplusplus

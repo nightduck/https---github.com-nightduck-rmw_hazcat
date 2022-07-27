@@ -46,15 +46,20 @@ set(hazcat_message_queue_sources
 )
 
 set(rmw_hazcat_sources
+  src/rmw_client.c
   src/rmw_compare_guids_equal.c
   src/rmw_count.c
+  src/rmw_event.c
   src/rmw_get_implementation_identifier.c
   src/rmw_get_serialization_format.c
   src/rmw_guard_condition.c
   src/rmw_init.c
+  src/rmw_logging.c
+  src/rmw_node_info_and_types.c
   src/rmw_node.c
   src/rmw_publisher.c
   src/rmw_serialize.c
+  src/rmw_service.c
   src/rmw_subscription.c
   src/rmw_wait.c
 )
@@ -75,13 +80,15 @@ target_include_directories(hazcat_message_queue PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   "$<INSTALL_INTERFACE:include>")
   ament_target_dependencies(hazcat_message_queue
-    "rmw"
+    rmw
   )
 
 add_library(rmw_hazcat SHARED ${rmw_hazcat_sources})
 ament_target_dependencies(rmw_hazcat
-  "rcutils"
-  "rmw"
+  rcutils
+  rmw
+  rosidl_runtime_c
+  rosidl_typesupport_introspection_c
 )
 target_include_directories(
   rmw_hazcat

@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "rmw/allocators.h"
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
+#include "rmw/validate_namespace.h"
+#include "rmw/validate_node_name.h"
 
 #include "rmw_hazcat/hazcat_node.h"
 
@@ -36,6 +39,31 @@ rmw_create_node(
   if (context->implementation_identifier != rmw_get_implementation_identifier()) {
     return NULL;
   }
+  if (context->impl == NULL) {
+    RCUTILS_SET_ERROR_MSG("context has been shutdown");
+    return NULL;
+  }
+
+  int validation_result = RMW_NODE_NAME_VALID;
+  rmw_ret_t ret = rmw_validate_node_name(name, &validation_result, NULL);
+  if (RMW_RET_OK != ret) {
+    return NULL;
+  }
+  if (RMW_NODE_NAME_VALID != validation_result) {
+    const char * reason = rmw_node_name_validation_result_string(validation_result);
+    RMW_SET_ERROR_MSG_WITH_FORMAT_STRING("invalid node name: %s", reason);
+    return NULL;
+  }
+  validation_result = RMW_NAMESPACE_VALID;
+  ret = rmw_validate_namespace(namespace_, &validation_result, NULL);
+  if (RMW_RET_OK != ret) {
+    return NULL;
+  }
+  if (RMW_NAMESPACE_VALID != validation_result) {
+    const char * reason = rmw_node_name_validation_result_string(validation_result);
+    RMW_SET_ERROR_MSG_WITH_FORMAT_STRING("invalid node namespace: %s", reason);
+    return NULL;
+  }
 
   rmw_node_t * node = rmw_node_allocate();
   if (node == NULL) {
@@ -45,10 +73,17 @@ rmw_create_node(
   node->implementation_identifier = rmw_get_implementation_identifier();
 
   node->data = rmw_allocate(sizeof(node_info_t));
+  if (node->data == NULL) {
+    RMW_SET_ERROR_MSG("failed to allocate memory for node handle");
+    return NULL;
+  }
   ((construct_node_info__*)node->data)->guard_condition = rmw_create_guard_condition(context);
+  if (((construct_node_info__*)node->data)->guard_condition == NULL) {
+    return NULL;
+  }
 
   node->name = rmw_allocate(strlen(name) + 1);
-  if (node == NULL) {
+  if (node->name == NULL) {
     RMW_SET_ERROR_MSG("failed to allocate memory for node name string");
     rmw_free(node);
     return NULL;
@@ -56,7 +91,7 @@ rmw_create_node(
   snprintf(node->name, strlen(name) + 1, name);
 
   node->namespace_ = rmw_allocate(strlen(namespace_) + 1);
-  if (node == NULL) {
+  if (node->namespace_ == NULL) {
     RMW_SET_ERROR_MSG("failed to allocate memory for node namespace string");
     rmw_free(node->name);
     rmw_free(node);
@@ -73,6 +108,9 @@ rmw_ret_t
 rmw_destroy_node(rmw_node_t * node)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
+  if (node->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
   rmw_free(node->namespace_);
   rmw_free(node->name);

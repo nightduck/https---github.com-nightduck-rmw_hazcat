@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <stdatomic.h>
+
+#include "rmw/allocators.h"
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
 
@@ -20,14 +23,23 @@ extern "C"
 {
 #endif
 
+// Creates guard condition. data element isn't even pointer, it's just a counter variable
 rmw_guard_condition_t *
 rmw_create_guard_condition(
   rmw_context_t * context)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, RMW_RET_INVALID_ARGUMENT);
 
-  RMW_SET_ERROR_MSG("rmw_create_guard_condition hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  rmw_guard_condition_t * guard = rmw_guard_condition_allocate();
+  if (guard == NULL) {
+    RMW_SET_ERROR_MSG("failed to allocate memory for guard condition");
+    return NULL;
+  }
+  guard->implementation_identifier = rmw_get_implementation_identifier();
+  guard->data = (void*)0L;
+  guard->context = context;
+
+  return guard;
 }
 
 rmw_ret_t
@@ -36,8 +48,9 @@ rmw_destroy_guard_condition(
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(guard_condition, RMW_RET_INVALID_ARGUMENT);
 
-  RMW_SET_ERROR_MSG("rmw_destroy_guard_condition hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  rmw_free(guard_condition);
+
+  return RMW_RET_OK;
 }
 
 rmw_ret_t
@@ -46,8 +59,10 @@ rmw_trigger_guard_condition(
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(guard_condition, RMW_RET_INVALID_ARGUMENT);
 
-  RMW_SET_ERROR_MSG("rmw_trigger_guard_condition hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  long * counter = (long*)guard_condition->data;
+  *counter++;
+
+  return RMW_RET_OK;
 }
 
 #ifdef __cplusplus

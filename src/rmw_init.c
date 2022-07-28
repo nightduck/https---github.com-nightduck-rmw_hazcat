@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "rcutils/strdup.h"
+
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
 #include "rmw/types.h"
@@ -59,7 +61,22 @@ rmw_init_options_copy(const rmw_init_options_t * src, rmw_init_options_t * dst)
     RMW_SET_ERROR_MSG("expected zero-initialized dst");
     return RMW_RET_INVALID_ARGUMENT;
   }
-  *dst = *src;
+  const rcutils_allocator_t * allocator = &src->allocator;
+  RCUTILS_CHECK_ALLOCATOR(allocator, return RMW_RET_INVALID_ARGUMENT);
+
+  rmw_init_options_t tmp = *src;
+  tmp.enclave = rcutils_strdup(src->enclave, *allocator);
+  if (NULL != src->enclave && NULL == tmp.enclave) {
+    return RMW_RET_BAD_ALLOC;
+  }
+  tmp.security_options = rmw_get_zero_initialized_security_options();
+  rmw_ret_t ret =
+    rmw_security_options_copy(&src->security_options, allocator, &tmp.security_options);
+  if (RMW_RET_OK != ret) {
+    allocator->deallocate(tmp.enclave, allocator->state);
+    return ret;
+  }
+  *dst = tmp;
 
   return RMW_RET_OK;
 }
@@ -113,7 +130,7 @@ rmw_init(const rmw_init_options_t * options, rmw_context_t * context)
 
   context->instance_id = options->instance_id;
   context->implementation_identifier = rmw_get_implementation_identifier();
-  context->impl = NULL;
+  context->impl = (void*)-1;
   rmw_ret_t ret = rmw_init_options_copy(options, &context->options);
   if (RMW_RET_OK != ret) {
     return ret;
@@ -126,9 +143,18 @@ rmw_ret_t
 rmw_shutdown(rmw_context_t * context)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, RMW_RET_INVALID_ARGUMENT);
+  if (NULL == context->implementation_identifier) {
+    RMW_SET_ERROR_MSG("expected initialized context");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
   if (context->implementation_identifier != rmw_get_implementation_identifier()) {
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }
+  if (context->impl == NULL) {
+    return RMW_RET_OK;
+  }
+
+  context->impl = NULL;
 
   return hazcat_fini();
 }
@@ -137,8 +163,16 @@ rmw_ret_t
 rmw_context_fini(rmw_context_t * context)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, RMW_RET_INVALID_ARGUMENT);
+  if (NULL == context->implementation_identifier) {
+    RMW_SET_ERROR_MSG("expected initialized context");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
   if (context->implementation_identifier != rmw_get_implementation_identifier()) {
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
+  if (context->impl != NULL) {
+    RCUTILS_SET_ERROR_MSG("context has not been shutdown");
+    return RMW_RET_INVALID_ARGUMENT;
   }
 
   rmw_ret_t ret = rmw_init_options_fini(&context->options);

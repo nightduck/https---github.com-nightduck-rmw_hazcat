@@ -25,9 +25,9 @@ rmw_count_publishers(
   const char * topic_name,
   size_t * count)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(topic_name, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(count, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(topic_name, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(count, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_count_publishers hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -39,9 +39,9 @@ rmw_count_subscribers(
   const char * topic_name,
   size_t * count)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(topic_name, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(count, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(topic_name, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(count, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_count_subscribers hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -52,8 +52,8 @@ rmw_subscription_count_matched_publishers(
   const rmw_subscription_t * subscription,
   size_t * publisher_count)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher_count, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher_count, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_subscription_count_matched_publishers hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -64,8 +64,8 @@ rmw_publisher_count_matched_subscriptions(
   const rmw_publisher_t * publisher,
   size_t * subscription_count)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription_count, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription_count, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_publisher_count_matched_subscriptions hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;

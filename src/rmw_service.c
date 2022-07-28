@@ -27,10 +27,10 @@ rmw_create_service(
   const char * service_name,
   const rmw_qos_profile_t * qos_profile)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_support, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service_name, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(qos_profile, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_support, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service_name, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(qos_profile, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_create_service hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -39,8 +39,8 @@ rmw_create_service(
 rmw_ret_t
 rmw_destroy_service(rmw_node_t * node, rmw_service_t * service)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_destroy_service hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -53,10 +53,10 @@ rmw_take_request(
   void * ros_request,
   bool * taken)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(request_header, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(ros_request, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(taken, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(request_header, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(ros_request, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(taken, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_take_request hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -68,9 +68,9 @@ rmw_send_response(
   rmw_request_id_t * request_header,
   void * ros_response)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(request_header, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(ros_response, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(request_header, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(ros_response, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_send_response hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -82,9 +82,9 @@ rmw_service_server_is_available(
   const rmw_client_t * client,
   bool * is_available)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(client, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(is_available, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(client, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(is_available, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_service_server_is_available hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;

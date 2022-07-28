@@ -72,7 +72,7 @@ rmw_create_node(
 rmw_ret_t
 rmw_destroy_node(rmw_node_t * node)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
 
   rmw_free(node->namespace_);
   rmw_free(node->name);
@@ -85,7 +85,7 @@ rmw_destroy_node(rmw_node_t * node)
 rmw_ret_t
 rmw_node_assert_liveliness(const rmw_node_t * node)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_node_assert_liveliness has been deprecated");
   return RMW_RET_UNSUPPORTED;
@@ -105,9 +105,9 @@ rmw_get_node_names(
   rcutils_string_array_t * node_names,
   rcutils_string_array_t * node_namespaces)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_names, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_namespaces, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_names, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_namespaces, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_node_get_graph_guard_condition hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -120,10 +120,10 @@ rmw_get_node_names_with_enclaves(
   rcutils_string_array_t * node_namespaces,
   rcutils_string_array_t * enclaves)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_names, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_namespaces, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(enclaves, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_names, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_namespaces, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(enclaves, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_node_get_graph_guard_condition hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;

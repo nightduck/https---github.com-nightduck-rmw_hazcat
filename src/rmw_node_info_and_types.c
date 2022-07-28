@@ -36,11 +36,11 @@ rmw_get_subscriber_names_and_types_by_node(
   bool no_demangle,
   rmw_names_and_types_t * topic_names_and_types)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocator, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_name, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_namespace, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(topic_names_and_types, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocator, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_name, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_namespace, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(topic_names_and_types, RMW_RET_INVALID_ARGUMENT);
   (void) no_demangle;
 
   RMW_SET_ERROR_MSG("rmw_get_subscriber_names_and_types_by_node hasn't been implemented yet");
@@ -56,11 +56,11 @@ rmw_get_publisher_names_and_types_by_node(
   bool no_demangle,
   rmw_names_and_types_t * topic_names_and_types)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocator, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_name, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_namespace, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(topic_names_and_types, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocator, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_name, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_namespace, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(topic_names_and_types, RMW_RET_INVALID_ARGUMENT);
   (void) no_demangle;
 
   RMW_SET_ERROR_MSG("rmw_get_publisher_names_and_types_by_node hasn't been implemented yet");
@@ -75,11 +75,11 @@ rmw_get_service_names_and_types_by_node(
   const char * node_namespace,
   rmw_names_and_types_t * service_names_and_types)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocator, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_name, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_namespace, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service_names_and_types, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocator, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_name, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_namespace, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service_names_and_types, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_get_service_names_and_types_by_node hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -91,9 +91,9 @@ rmw_get_service_names_and_types(
   rcutils_allocator_t * allocator,
   rmw_names_and_types_t * service_names_and_types)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocator, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service_names_and_types, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocator, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service_names_and_types, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_get_service_names_and_types hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -107,11 +107,11 @@ rmw_get_client_names_and_types_by_node(
   const char * node_namespace,
   rmw_names_and_types_t * service_names_and_types)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocator, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_name, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_namespace, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service_names_and_types, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocator, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_name, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_namespace, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service_names_and_types, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_get_client_names_and_types_by_node hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -124,9 +124,9 @@ rmw_get_topic_names_and_types(
   bool no_demangle,
   rmw_names_and_types_t * topic_names_and_types)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocator, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(topic_names_and_types, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocator, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(topic_names_and_types, RMW_RET_INVALID_ARGUMENT);
   (void)no_demangle;
 
   RMW_SET_ERROR_MSG("rmw_get_topic_names_and_types hasn't been implemented yet");

@@ -223,9 +223,9 @@ rmw_serialize(
   const rosidl_message_type_support_t * type_supports,
   rmw_serialized_message_t * serialized_message)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(ros_message, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_supports, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(serialized_message, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(ros_message, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_supports, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(serialized_message, RMW_RET_INVALID_ARGUMENT);
   rmw_ret_t ret;
 
   if (type_supports->typesupport_identifier != rosidl_typesupport_introspection_c__identifier) {
@@ -262,9 +262,9 @@ rmw_deserialize(
   const rosidl_message_type_support_t * type_supports,
   void * ros_message)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(serialized_message, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_supports, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(ros_message, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(serialized_message, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_supports, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(ros_message, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_deserialize hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -276,9 +276,9 @@ rmw_get_serialized_message_size(
   const rosidl_runtime_c__Sequence__bound * message_bounds,
   size_t * size)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_supports, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(message_bounds, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(size, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_supports, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(message_bounds, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(size, RMW_RET_INVALID_ARGUMENT);
 
   rosidl_message_type_support_t * ts_c = get_message_typesupport_handle(
     type_supports, rosidl_typesupport_introspection_c__identifier);

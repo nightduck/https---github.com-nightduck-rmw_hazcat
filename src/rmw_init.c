@@ -25,8 +25,8 @@ extern "C"
 rmw_ret_t
 rmw_init_options_init(rmw_init_options_t * init_options, rcutils_allocator_t allocator)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(init_options, RMW_RET_ERROR);
-  (void)allocator;
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(init_options, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ALLOCATOR(&allocator, return RMW_RET_INVALID_ARGUMENT);
   if (NULL != init_options->implementation_identifier) {
     RMW_SET_ERROR_MSG("expected zero-initialized init_options");
     return RMW_RET_INVALID_ARGUMENT;
@@ -35,7 +35,7 @@ rmw_init_options_init(rmw_init_options_t * init_options, rcutils_allocator_t all
   init_options->implementation_identifier = rmw_get_implementation_identifier();
   init_options->allocator = allocator;
   init_options->impl = NULL;
-  init_options->security_options = rmw_get_zero_initialized_security_options();
+  init_options->security_options = rmw_get_default_security_options();
   init_options->domain_id = RMW_DEFAULT_DOMAIN_ID;
   init_options->localhost_only = RMW_LOCALHOST_ONLY_ENABLED;
   init_options->enclave = NULL;
@@ -46,9 +46,13 @@ rmw_init_options_init(rmw_init_options_t * init_options, rcutils_allocator_t all
 rmw_ret_t
 rmw_init_options_copy(const rmw_init_options_t * src, rmw_init_options_t * dst)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(src, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(dst, RMW_RET_ERROR);
-  if (src->implementation_identifier == rmw_get_implementation_identifier()) {
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(src, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(dst, RMW_RET_INVALID_ARGUMENT);
+  if (NULL == src->implementation_identifier) {
+    RMW_SET_ERROR_MSG("expected initialized src");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+  if (src->implementation_identifier != rmw_get_implementation_identifier()) {
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }
   if (NULL != dst->implementation_identifier) {
@@ -63,13 +67,17 @@ rmw_init_options_copy(const rmw_init_options_t * src, rmw_init_options_t * dst)
 rmw_ret_t
 rmw_init_options_fini(rmw_init_options_t * init_options)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(init_options, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(init_options, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ALLOCATOR(&(init_options->allocator), return RMW_RET_INVALID_ARGUMENT);
+  if (NULL == init_options->implementation_identifier) {
+    RMW_SET_ERROR_MSG("expected initialized init_options");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
   if (init_options->implementation_identifier != rmw_get_implementation_identifier()) {
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }
 
-  const rcutils_allocator_t * allocator = &init_options->allocator;
+  rcutils_allocator_t * allocator = &init_options->allocator;
   RCUTILS_CHECK_ALLOCATOR(allocator, return RMW_RET_INVALID_ARGUMENT);
 
   allocator->deallocate(init_options->enclave, allocator->state);
@@ -81,8 +89,20 @@ rmw_init_options_fini(rmw_init_options_t * init_options)
 rmw_ret_t
 rmw_init(const rmw_init_options_t * options, rmw_context_t * context)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(options, RMW_RET_ERROR);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(options, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_FOR_NULL_WITH_MSG(
+    options->implementation_identifier,
+    "expected initialized init options",
+    return RMW_RET_INVALID_ARGUMENT);
+  RMW_CHECK_FOR_NULL_WITH_MSG(
+    options->enclave,
+    "expected non-null enclave",
+    return RMW_RET_INVALID_ARGUMENT);
+  if (NULL != context->implementation_identifier) {
+    RMW_SET_ERROR_MSG("expected a zero-initialized context");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
   if (options->implementation_identifier != rmw_get_implementation_identifier()) {
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }
@@ -94,7 +114,10 @@ rmw_init(const rmw_init_options_t * options, rmw_context_t * context)
   context->instance_id = options->instance_id;
   context->implementation_identifier = rmw_get_implementation_identifier();
   context->impl = NULL;
-  context->options = *options;
+  rmw_ret_t ret = rmw_init_options_copy(options, &context->options);
+  if (RMW_RET_OK != ret) {
+    return ret;
+  }
 
   return hazcat_init();
 }
@@ -102,7 +125,7 @@ rmw_init(const rmw_init_options_t * options, rmw_context_t * context)
 rmw_ret_t
 rmw_shutdown(rmw_context_t * context)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, RMW_RET_INVALID_ARGUMENT);
   if (context->implementation_identifier != rmw_get_implementation_identifier()) {
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }
@@ -113,7 +136,7 @@ rmw_shutdown(rmw_context_t * context)
 rmw_ret_t
 rmw_context_fini(rmw_context_t * context)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, RMW_RET_ERROR);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, RMW_RET_INVALID_ARGUMENT);
   if (context->implementation_identifier != rmw_get_implementation_identifier()) {
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }

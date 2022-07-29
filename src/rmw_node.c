@@ -15,6 +15,7 @@
 #include "rmw/allocators.h"
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
+#include "rmw/sanity_checks.h"
 #include "rmw/validate_namespace.h"
 #include "rmw/validate_node_name.h"
 
@@ -146,6 +147,15 @@ rmw_get_node_names(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_names, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_namespaces, RMW_RET_INVALID_ARGUMENT);
+  if (node->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
+  if (RMW_RET_OK != rmw_check_zero_rmw_string_array(node_names)) {
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+  if (RMW_RET_OK != rmw_check_zero_rmw_string_array(node_namespaces)) {
+    return RMW_RET_INVALID_ARGUMENT;
+  }
 
   RMW_SET_ERROR_MSG("rmw_node_get_graph_guard_condition hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -162,6 +172,18 @@ rmw_get_node_names_with_enclaves(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_names, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(node_namespaces, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(enclaves, RMW_RET_INVALID_ARGUMENT);
+  if (node->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
+  if (RMW_RET_OK != rmw_check_zero_rmw_string_array(node_names)) {
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+  if (RMW_RET_OK != rmw_check_zero_rmw_string_array(node_namespaces)) {
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+  if (RMW_RET_OK != rmw_check_zero_rmw_string_array(enclaves)) {
+    return RMW_RET_INVALID_ARGUMENT;
+  }
 
   RMW_SET_ERROR_MSG("rmw_node_get_graph_guard_condition hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;

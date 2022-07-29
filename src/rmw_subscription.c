@@ -15,7 +15,16 @@
 #include "rmw/error_handling.h"
 #include "rmw/event.h"
 #include "rmw/rmw.h"
+#include "rmw/get_node_info_and_types.h"
+#include "rmw/get_service_names_and_types.h"
 #include "rmw/get_topic_endpoint_info.h"
+#include "rmw/get_topic_names_and_types.h"
+#include "rmw/names_and_types.h"
+#include "rmw/sanity_checks.h"
+#include "rmw/validate_namespace.h"
+#include "rmw/validate_node_name.h"
+
+#include "rmw_hazcat/allocators/cpu_ringbuf_allocator.h"
 #include "rmw_hazcat/hazcat_message_queue.h"
 
 #ifdef __cplusplus
@@ -267,6 +276,24 @@ rmw_get_subscriptions_info_by_topic(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocator, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(topic_name, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscriptions_info, RMW_RET_INVALID_ARGUMENT);
+  if (node->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
+  int validation_result = RMW_NODE_NAME_VALID;
+  rmw_ret_t ret = rmw_validate_node_name(topic_name, &validation_result, NULL);
+  if (RMW_RET_OK != ret) {
+    return ret;
+  }
+  if (RMW_NODE_NAME_VALID != validation_result) {
+    const char * reason = rmw_node_name_validation_result_string(validation_result);
+    RMW_SET_ERROR_MSG_WITH_FORMAT_STRING("node_name argument is invalid: %s", reason);
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+  RCUTILS_CHECK_ALLOCATOR_WITH_MSG(
+    allocator, "allocator argument is invalid", return RMW_RET_INVALID_ARGUMENT);
+  if (RMW_RET_OK != rmw_topic_endpoint_info_array_check_zero(subscriptions_info)) {
+    return RMW_RET_INVALID_ARGUMENT;
+  }
   (void)no_mangle;
 
   RMW_SET_ERROR_MSG("rmw_get_subscriptions_info_by_topic hasn't been implemented yet");

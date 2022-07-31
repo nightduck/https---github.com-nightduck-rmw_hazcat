@@ -9,6 +9,7 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <depend>microcdr</depend>
   <depend>rcpputils</depend>
   <depend>rcutils</depend>
   <depend>rmw</depend>

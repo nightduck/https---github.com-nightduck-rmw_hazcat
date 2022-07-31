@@ -25,6 +25,7 @@ find_package(rcutils REQUIRED)
 find_package(rmw REQUIRED)
 find_package(rosidl_runtime_c REQUIRED)
 find_package(rosidl_typesupport_introspection_c REQUIRED)
+find_package(microcdr REQUIRED)
 
 set(CUDA_SEPARABLE_COMPILATION ON)
 cuda_select_nvcc_arch_flags(ARCH_FLAGS Auto)
@@ -85,6 +86,7 @@ target_include_directories(hazcat_message_queue PUBLIC
 
 add_library(rmw_hazcat SHARED ${rmw_hazcat_sources})
 ament_target_dependencies(rmw_hazcat
+  microcdr
   rcutils
   rmw
   rosidl_runtime_c
@@ -97,6 +99,7 @@ target_include_directories(
 target_link_libraries(rmw_hazcat
   hazcat_allocators
   hazcat_message_queue
+  microcdr
 )
 
 register_rmw_implementation(

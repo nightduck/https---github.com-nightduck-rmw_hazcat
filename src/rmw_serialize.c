@@ -13,6 +13,10 @@
 // limitations under the License.
 
 #include <string.h>
+#include <stdio.h>
+
+#include <ucdr/microcdr.h>
+
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
 
@@ -28,7 +32,7 @@
 
 //#include "rmw_hazcat/hashtable.h"
 
-#define RMW_HAZCAT_TYPESUPPORT_C    rosidl_typesupport_c__typesupport_identifier
+#define RMW_HAZCAT_TYPESUPPORT_C    rosidl_typesupport_introspection_c__identifier
 //#define RMW_HAZCAT_TYPESUPPORT_CPP  rosidl_typesupport_cpp__typesupport_identifier
 
 #ifdef __cplusplus
@@ -176,81 +180,139 @@ const char * deserialize_message_field(
 void serialize(
   const void * ros_message,
   const rosidl_typesupport_introspection_c__MessageMembers * members,
-  void * serialized_msg)
+  rmw_serialized_message_t * serialized_msg,
+  ucdrBuffer * writer)
 {
   assert(members);
   assert(ros_message);
 
-  for (uint32_t i = 0; i < members->member_count_; ++i) {
+  for(uint32_t i = 0; i < members->member_count_; i++) {
     const rosidl_typesupport_introspection_c__MessageMember * member = members->members_ + i;
     const char * ros_message_field = (const char *)(ros_message) + member->offset_;
-    const rosidl_runtime_c__String * string = (const rosidl_runtime_c__String *)(ros_message_field);
-    switch (member->type_id_) {
+    const rosidl_message_type_support_t * ts;
+    const rosidl_typesupport_introspection_c__MessageMembers * sub_members;
+    switch(member->type_id_) {
       case rosidl_typesupport_introspection_c__ROS_TYPE_MESSAGE:
-        {
-          // Iterate recursively over the complex ROS messages
-          const rosidl_typesupport_introspection_c__MessageMembers * sub_members =
-            (const rosidl_typesupport_introspection_c__MessageMembers *)(member->members_
-            ->data);
+        ts = member->members_;
+        sub_members = (const rosidl_typesupport_introspection_c__MessageMembers *)ts->data;
 
-          const void * subros_message = NULL;
-          size_t sequence_size = 0;
-          size_t sub_members_size = sub_members->size_of_;
-          // It's a single message
-          if (!member->is_array_) {
-            subros_message = ros_message_field;
-            sequence_size = 1;
-            // It's a fixed size array of messages
-          } else if (member->array_size_ > 0 && !member->is_upper_bound_) {
-            subros_message = ros_message_field;
-            sequence_size = member->array_size_;
-            // It's a dynamic sequence of messages
-          } else {
-            // Cast current ros_message_field ptr as vector "definition"
-            const rosidl_runtime_c__char__Sequence * vector =
-              (const rosidl_runtime_c__char__Sequence *)(ros_message_field);
-            // Vector size points to content of vector and returns number of bytes
-            // submembersize is the size of one element in the vector
-            // (it is provided by type support)
-            sequence_size = vector->size / sub_members_size;
-            if (member->is_upper_bound_ && sequence_size > member->array_size_) {
-              RMW_SET_ERROR_MSG("vector overcomes the maximum length");
-              return RMW_RET_ERROR;
-            }
-            // create ptr to content of vector to enable recursion
-            subros_message = (const void *)(vector->data);
-            const uint32_t check = 101;
-            uint32_t seq_size[2] = {check, sequence_size};
-
-            serialize_element(serialized_msg, seq_size, 2 * sizeof(uint32_t));
-          }
-
-          //debug_log("serializing message field %s\n", member->name_);
-          for (auto index = 0u; index < sequence_size; ++index) {
-            serialize(subros_message, sub_members, serialized_msg);
-            subros_message = (const char *)(subros_message) + sub_members_size;
-          }
-        }
+        // Recurse
+        serialize(ros_message_field, sub_members, serialized_msg, writer);
         break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_BOOL:
+        if (member->is_array_) {
+          ucdr_serialize_array_bool(writer, (bool *)ros_message_field, member->array_size_);
+          serialized_msg->buffer_length += member->array_size_ * sizeof(bool);
+        } else {
+          ucdr_serialize_bool(writer, *(bool *)ros_message_field);
+          serialized_msg->buffer_length += sizeof(bool);
+        }
+        break;
+      case rosidl_typesupport_introspection_c__ROS_TYPE_CHAR:
+        if (member->is_array_) {
+          ucdr_serialize_array_char(writer, (char *)ros_message_field, member->array_size_);
+          serialized_msg->buffer_length += member->array_size_ * sizeof(char);
+        } else {
+          ucdr_serialize_char(writer, *(char *)ros_message_field);
+          serialized_msg->buffer_length += sizeof(char);
+        }
+        break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_BYTE:
       case rosidl_typesupport_introspection_c__ROS_TYPE_UINT8:
-      case rosidl_typesupport_introspection_c__ROS_TYPE_CHAR:
+        if (member->is_array_) {
+          ucdr_serialize_array_uint8_t(writer, (uint8_t *)ros_message_field, member->array_size_);
+          serialized_msg->buffer_length += member->array_size_ * sizeof(uint8_t);
+        } else {
+          ucdr_serialize_uint8_t(writer, *(uint8_t *)ros_message_field);
+          serialized_msg->buffer_length += sizeof(uint8_t);
+        }
+        break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_INT8:
+        if (member->is_array_) {
+          ucdr_serialize_array_int8_t(writer, (int8_t *)ros_message_field, member->array_size_);
+          serialized_msg->buffer_length += member->array_size_ * sizeof(int8_t);
+        } else {
+          ucdr_serialize_int8_t(writer, *(int8_t *)ros_message_field);
+          serialized_msg->buffer_length += sizeof(int8_t);
+        }
+        break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_FLOAT32:
+        if (member->is_array_) {
+          ucdr_serialize_array_float(writer, (float *)ros_message_field, member->array_size_);
+          serialized_msg->buffer_length += member->array_size_ * sizeof(float);
+        } else {
+          ucdr_serialize_float(writer, *(float *)ros_message_field);
+          serialized_msg->buffer_length += sizeof(float);
+        }
+        break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_FLOAT64:
+        if (member->is_array_) {
+          ucdr_serialize_array_double(writer, (double *)ros_message_field, member->array_size_);
+          serialized_msg->buffer_length += member->array_size_ * sizeof(double);
+        } else {
+          ucdr_serialize_double(writer, *(double *)ros_message_field);
+          serialized_msg->buffer_length += sizeof(double);
+        }
+        break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_INT16:
+        if (member->is_array_) {
+          ucdr_serialize_array_int16_t(writer, (int16_t *)ros_message_field, member->array_size_);
+          serialized_msg->buffer_length += member->array_size_ * sizeof(int16_t);
+        } else {
+          ucdr_serialize_int16_t(writer, *(int16_t *)ros_message_field);
+          serialized_msg->buffer_length += sizeof(int16_t);
+        }
+        break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_UINT16:
+        if (member->is_array_) {
+          ucdr_serialize_array_uint16_t(writer, (uint16_t *)ros_message_field, member->array_size_);
+          serialized_msg->buffer_length += member->array_size_ * sizeof(uint16_t);
+        } else {
+          ucdr_serialize_uint16_t(writer, *(uint16_t *)ros_message_field);
+          serialized_msg->buffer_length += sizeof(uint16_t);
+        }
+        break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_INT32:
+        if (member->is_array_) {
+          ucdr_serialize_array_int32_t(writer, (int32_t *)ros_message_field, member->array_size_);
+          serialized_msg->buffer_length += member->array_size_ * sizeof(int32_t);
+        } else {
+          ucdr_serialize_int32_t(writer, *(int32_t *)ros_message_field);
+          serialized_msg->buffer_length += sizeof(int32_t);
+        }
+        break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_UINT32:
+        if (member->is_array_) {
+          ucdr_serialize_array_uint32_t(writer, (uint32_t *)ros_message_field, member->array_size_);
+          serialized_msg->buffer_length += member->array_size_ * sizeof(uint32_t);
+        } else {
+          ucdr_serialize_uint32_t(writer, *(uint32_t *)ros_message_field);
+          serialized_msg->buffer_length += sizeof(uint32_t);
+        }
+        break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_INT64:
+        if (member->is_array_) {
+          ucdr_serialize_array_int64_t(writer, (int64_t *)ros_message_field, member->array_size_);
+          serialized_msg->buffer_length += member->array_size_ * sizeof(int64_t);
+        } else {
+          ucdr_serialize_int64_t(writer, *(int64_t *)ros_message_field);
+          serialized_msg->buffer_length += sizeof(int64_t);
+        }
+        break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_UINT64:
-        serialize_message_field(member, serialized_msg, ros_message_field,
-          member->size_function(ros_message_field));
+        if (member->is_array_) {
+          ucdr_serialize_array_uint64_t(writer, (uint64_t *)ros_message_field, member->array_size_);
+          serialized_msg->buffer_length += member->array_size_ * sizeof(uint64_t);
+        } else {
+          ucdr_serialize_uint64_t(writer, *(uint64_t *)ros_message_field);
+          serialized_msg->buffer_length += sizeof(uint64_t);
+        }
         break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_STRING:
-        serialize_message_field(member, serialized_msg, ros_message_field,
-          string->size);
+        if (member->is_array_) {
+          ucdr_serialize_string(writer, (char *)ros_message_field);
+          serialized_msg->buffer_length += member->string_upper_bound_;
+        }
         break;
       default:
         RMW_SET_ERROR_MSG("Serializing unknown type");
@@ -258,6 +320,92 @@ void serialize(
     }
   }
 }
+
+// void serialize2(
+//   const void * ros_message,
+//   const rosidl_typesupport_introspection_c__MessageMembers * members,
+//   void * serialized_msg,
+//   ucdrBuffer * writer)
+// {
+//   assert(members);
+//   assert(ros_message);
+
+//   for (uint32_t i = 0; i < members->member_count_; ++i) {
+//     const rosidl_typesupport_introspection_c__MessageMember * member = members->members_ + i;
+//     const char * ros_message_field = (const char *)(ros_message) + member->offset_;
+//     const rosidl_runtime_c__String * string = (const rosidl_runtime_c__String *)(ros_message_field);
+//     switch (member->type_id_) {
+//       case rosidl_typesupport_introspection_c__ROS_TYPE_MESSAGE:
+//         {
+//           // Iterate recursively over the complex ROS messages
+//           const rosidl_typesupport_introspection_c__MessageMembers * sub_members = member->members_->data;
+
+//           const void * subros_message = NULL;
+//           size_t sequence_size = 0;
+//           size_t sub_members_size = sub_members->size_of_;
+//           // It's a single message
+//           if (!member->is_array_) {
+//             subros_message = ros_message_field;
+//             sequence_size = 1;
+//             // It's a fixed size array of messages
+//           } else if (member->array_size_ > 0 && !member->is_upper_bound_) {
+//             subros_message = ros_message_field;
+//             sequence_size = member->array_size_;
+//             // It's a dynamic sequence of messages
+//           } else {
+//             // Cast current ros_message_field ptr as vector "definition"
+//             const rosidl_runtime_c__char__Sequence * vector =
+//               (const rosidl_runtime_c__char__Sequence *)(ros_message_field);
+//             // Vector size points to content of vector and returns number of bytes
+//             // submembersize is the size of one element in the vector
+//             // (it is provided by type support)
+//             sequence_size = vector->size / sub_members_size;
+//             if (member->is_upper_bound_ && sequence_size > member->array_size_) {
+//               RMW_SET_ERROR_MSG("vector overcomes the maximum length");
+//               return RMW_RET_ERROR;
+//             }
+//             // create ptr to content of vector to enable recursion
+//             subros_message = (const void *)(vector->data);
+//             const uint32_t check = 101;
+//             uint32_t seq_size[2] = {check, sequence_size};
+
+//             serialize_element(serialized_msg, seq_size, 2 * sizeof(uint32_t));
+//           }
+
+//           //debug_log("serializing message field %s\n", member->name_);
+//           for (auto index = 0u; index < sequence_size; ++index) {
+//             serialize(subros_message, sub_members, serialized_msg);
+//             subros_message = (const char *)(subros_message) + sub_members_size;
+//           }
+//         }
+//         break;
+//       case rosidl_typesupport_introspection_c__ROS_TYPE_BOOL:
+//         ucdr_serialize_bool
+//       case rosidl_typesupport_introspection_c__ROS_TYPE_BYTE:
+//       case rosidl_typesupport_introspection_c__ROS_TYPE_UINT8:
+//       case rosidl_typesupport_introspection_c__ROS_TYPE_CHAR:
+//       case rosidl_typesupport_introspection_c__ROS_TYPE_INT8:
+//       case rosidl_typesupport_introspection_c__ROS_TYPE_FLOAT32:
+//       case rosidl_typesupport_introspection_c__ROS_TYPE_FLOAT64:
+//       case rosidl_typesupport_introspection_c__ROS_TYPE_INT16:
+//       case rosidl_typesupport_introspection_c__ROS_TYPE_UINT16:
+//       case rosidl_typesupport_introspection_c__ROS_TYPE_INT32:
+//       case rosidl_typesupport_introspection_c__ROS_TYPE_UINT32:
+//       case rosidl_typesupport_introspection_c__ROS_TYPE_INT64:
+//       case rosidl_typesupport_introspection_c__ROS_TYPE_UINT64:
+//         serialize_message_field(member, serialized_msg, ros_message_field,
+//           member->size_function(ros_message_field));
+//         break;
+//       case rosidl_typesupport_introspection_c__ROS_TYPE_STRING:
+//         serialize_message_field(member, serialized_msg, ros_message_field,
+//           string->size);
+//         break;
+//       default:
+//         RMW_SET_ERROR_MSG("Serializing unknown type");
+//         return RMW_RET_INVALID_ARGUMENT;
+//     }
+//   }
+// }
 
 void deserialize(
   const void * ros_message,
@@ -272,13 +420,14 @@ void deserialize(
   }
 }
 
-size_t get_serialized_size(
+rmw_ret_t
+get_serialized_size(
   const void * ros_message,
-  const rosidl_typesupport_introspection_c__MessageMembers * members)
+  const rosidl_typesupport_introspection_c__MessageMembers * members,
+  size_t * size)
 {
   assert(members);
   assert(ros_message);
-  size_t size = 0;
 
   for (uint32_t i = 0; i < members->member_count_; ++i) {
     const rosidl_typesupport_introspection_c__MessageMember * member = members->members_ + i;
@@ -289,8 +438,7 @@ size_t get_serialized_size(
         {
           // Iterate recursively over the complex ROS messages
           const rosidl_typesupport_introspection_c__MessageMembers * sub_members =
-            (const rosidl_typesupport_introspection_c__MessageMembers *)(member->members_
-            ->data);
+            (const rosidl_typesupport_introspection_c__MessageMembers *)(member->members_->data);
 
           const void * subros_message = NULL;
           size_t sequence_size = 0;
@@ -326,24 +474,36 @@ size_t get_serialized_size(
 
           //debug_log("serializing message field %s\n", member->name_);
           for (int index = 0u; index < sequence_size; ++index) {
-            size += get_serialized_size(subros_message, sub_members);
+            size += get_serialized_size(subros_message, sub_members, size);
           }
         }
         break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_BOOL:
+        size += sizeof(bool);
+        break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_BYTE:
       case rosidl_typesupport_introspection_c__ROS_TYPE_UINT8:
       case rosidl_typesupport_introspection_c__ROS_TYPE_CHAR:
       case rosidl_typesupport_introspection_c__ROS_TYPE_INT8:
+        size += sizeof(char);
+        break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_FLOAT32:
+        size += sizeof(float);
+        break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_FLOAT64:
+        size += sizeof(double);
+        break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_INT16:
       case rosidl_typesupport_introspection_c__ROS_TYPE_UINT16:
+        size += sizeof(int16_t);
+        break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_INT32:
       case rosidl_typesupport_introspection_c__ROS_TYPE_UINT32:
+        size += sizeof(int32_t);
+        break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_INT64:
       case rosidl_typesupport_introspection_c__ROS_TYPE_UINT64:
-        size += member->size_function(ros_message_field);
+        size += sizeof(int64_t);
         break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_STRING:
         size += string->size;
@@ -353,6 +513,8 @@ size_t get_serialized_size(
         return RMW_RET_INVALID_ARGUMENT;
     }
   }
+
+  return RMW_RET_OK;
 }
 
 // rmw_ret_t
@@ -434,12 +596,43 @@ rmw_serialize(
   const rosidl_message_type_support_t * type_support,
   rmw_serialized_message_t * serialized_message)
 {
-  (void)ros_message;
-  (void)type_support;
-  (void)serialized_message;
+  // if (type_support->typesupport_identifier != RMW_HAZCAT_TYPESUPPORT_C) {
+  //   RMW_SET_ERROR_MSG("type support not from this implementation");
+  //   return RMW_RET_ERROR;
+  // }
 
-  RMW_SET_ERROR_MSG("Function not implemented");
-  return RMW_RET_UNSUPPORTED;
+  rosidl_message_type_support_t * ts_c =
+    (rosidl_message_type_support_t *)type_support->func(type_support, RMW_HAZCAT_TYPESUPPORT_C);
+  if (ts_c == NULL) {
+    RMW_SET_ERROR_MSG("rmw_hazcat only supports rosidl_typesupport_introspection_c");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+  rosidl_typesupport_introspection_c__MessageMembers * members =
+    (rosidl_typesupport_introspection_c__MessageMembers *)ts_c->data;
+  rmw_ret_t ret;
+  size_t size = members->size_of_;
+  //if (get_serialized_size(ros_message, members, &size);
+  if ((ret = rmw_serialized_message_resize(serialized_message, size))
+    != RMW_RET_OK)
+  {
+    RMW_SET_ERROR_MSG("Cannot resize serialized message");
+    return ret;
+  }
+
+  if (size != members->size_of_) {
+    printf("members->size_of_ doesn't match size, %d vs %d", members->size_of_, size);
+  }
+
+  // CDR buffer
+  ucdrBuffer writer;
+  ucdr_init_buffer(&writer, serialized_message->buffer, size);
+
+  // Serialize the message
+  serialize(ros_message, members, serialized_message, &writer);
+
+
+  
+  return RMW_RET_OK;
 }
 
 rmw_ret_t

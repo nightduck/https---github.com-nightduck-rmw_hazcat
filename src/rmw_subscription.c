@@ -68,12 +68,32 @@ rmw_create_subscription(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(qos_policies, NULL);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription_options, NULL);
 
+  rmw_ret_t ret;
+  size_t msg_size;
+  rosidl_runtime_c__Sequence__bound dummy;
+  if (ret = rmw_get_serialized_message_size(type_support, &dummy, &msg_size) != RMW_RET_OK) {
+    return ret;
+  }
+
   rmw_subscription_t * sub = rmw_subscription_allocate();
+  if (pub == NULL) {
+    RMW_SET_ERROR_MSG("Unable to allocate memory for subscription");
+    return NULL;
+  }
   pub_sub_data_t * data = rmw_allocate(sizeof(pub_sub_data_t));
+  if (data == NULL) {
+    RMW_SET_ERROR_MSG("Unable to allocate memory for subscription info");
+    return NULL;
+  }
 
   // Populate data->alloc with allocator specified and data->history with qos setting
   data->alloc = (hma_allocator_t *)subscription_options->rmw_specific_subscription_payload;
+  if (data->alloc == NULL) {
+    // TODO(nightduck): Remove when TLSF allocator is done
+    data->alloc = create_cpu_ringbuf_allocator(msg_size, qos_policies->depth);
+  }
   data->depth = qos_policies->depth;
+  data->msg_size = msg_size;
 
   size_t len = strlen(topic_name);
   sub->implementation_identifier = rmw_get_implementation_identifier();
@@ -135,6 +155,8 @@ rmw_take(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(taken, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocation, RMW_RET_INVALID_ARGUMENT);
 
+
+  ros_message = hazcat_take(subscription);
   RMW_SET_ERROR_MSG("rmw_subscription_get_actual_qos hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
 }
@@ -203,8 +225,16 @@ rmw_take_loaned_message(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(taken, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocation, RMW_RET_INVALID_ARGUMENT);
 
-  RMW_SET_ERROR_MSG("rmw_take_loaned_message hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  *loaned_message = hazcat_take(subscription);
+  if (*loaned_message == NULL) {
+    taken = false;
+  } else {
+    taken = true;
+  }
+
+  // TODO(nightduck): Check for errors in hazcat_take
+
+  return RMW_RET_OK;
 }
 
 rmw_ret_t
@@ -232,8 +262,16 @@ rmw_return_loaned_message_from_subscription(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(loaned_message, RMW_RET_INVALID_ARGUMENT);
 
-  RMW_SET_ERROR_MSG("rmw_return_loaned_message_from_subscription hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  hma_allocator_t * alloc = get_matching_alloc(subscription, loaned_message);
+  if (alloc == NULL) {
+    RMW_SET_ERROR_MSG("Returning message that wasn't loaned")
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+
+  int offset = PTR_TO_OFFSET(alloc, loaned_message);
+  DEALLOCATE(alloc, offset);
+
+  return RMW_RET_OK;
 }
 
 rmw_ret_t

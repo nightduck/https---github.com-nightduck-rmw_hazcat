@@ -98,6 +98,7 @@ typedef struct pub_sub_data
   uint16_t next_index;      // Next index in message queue to read
   uint8_t array_num;        // Identifies domain to message queue
   int depth;                // Max backlogged messages
+  size_t msg_size;          // Upperbound of message size
 } pub_sub_data_t;
 
 typedef struct sub_options
@@ -133,7 +134,7 @@ hazcat_publish(rmw_publisher_t * pub, void * msg, size_t len);
 
 // Take's loaned message for subscriber, copying it into the correct memory domain, if needed.
 // Will respect history QoS settings and skip over stale messages
-msg_ref_t
+void *
 hazcat_take(rmw_subscription_t * sub);
 
 rmw_ret_t
@@ -141,6 +142,9 @@ hazcat_unregister_publisher(rmw_publisher_t * pub);
 
 rmw_ret_t
 hazcat_unregister_subscription(rmw_subscription_t * sub);
+
+hma_allocator_t *
+get_matching_alloc(const rmw_subscription_t * sub, const void * msg);
 
 #ifdef __cplusplus
 }

@@ -355,7 +355,7 @@ hazcat_publish(rmw_publisher_t * pub, void * msg, size_t len)
 // Fetches a message reference from shared message queue.
 // TODO(nightduck): Refactor alloc and message as argument references, and return
 // rmw_ret_t value
-msg_ref_t
+void *
 hazcat_take(rmw_subscription_t * sub)
 {
   // Acquire lock on shared file
@@ -390,7 +390,7 @@ hazcat_take(rmw_subscription_t * sub)
   ref_bits_t * ref_bits = get_ref_bits(mq, i);
   if ((1 << ((pub_sub_data_t *)sub->data)->array_num) & ref_bits->availability) {
     // Message in preferred domain
-    entry_t * entry = get_entry(mq, alloc->domain, i);
+    entry_t * entry = get_entry(mq, ((pub_sub_data_t *)sub->data)->array_num, i);
 
     // Lookup src allocator with hashtable mapping shm id to mem address
     hma_allocator_t * src_alloc = hashtable_get(ht, entry->alloc_shmem_id);
@@ -469,7 +469,7 @@ hazcat_take(rmw_subscription_t * sub)
     // TODO(nightduck): Return something?
   }
 
-  return ret;
+  return ret.msg;
 }
 
 rmw_ret_t
@@ -591,6 +591,28 @@ hazcat_unregister_subscription(rmw_subscription_t * sub)
   return RMW_RET_OK;
 }
 
+hma_allocator_t *
+get_matching_alloc(const rmw_subscription_t * sub, const void * msg) {
+  message_queue_t * mq = ((pub_sub_data_t *)sub->data)->mq->elem;
+
+  int recent = ((pub_sub_data_t *)sub->data)->next_index;
+  if (recent < ((pub_sub_data_t *)sub->data)->depth) {
+    recent += mq->len;
+  }
+  for(int i = 1; i < ((pub_sub_data_t *)sub->data)->depth; i++) {
+    int index = recent - i;
+    entry_t * entry = get_entry(mq, ((pub_sub_data_t *)sub->data)->array_num, index);
+    
+    hma_allocator_t * msg_alloc = hashtable_get(ht, entry->alloc_shmem_id);
+    void * entry_msg = GET_PTR(src_alloc, entry->offset, void);
+    if (entry_msg == msg) {
+      return msg_alloc;
+    }
+  }
+
+  // Message doesn't match
+  return NULL;
+}
 #ifdef __cplusplus
 }
 #endif

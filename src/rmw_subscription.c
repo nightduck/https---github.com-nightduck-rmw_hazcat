@@ -70,25 +70,29 @@ rmw_create_subscription(
   if (node->implementation_identifier != rmw_get_implementation_identifier()) {
     return NULL;
   }
-  int validation_result = RMW_NAMESPACE_VALID;
-  rmw_ret_t ret = rmw_validate_namespace(topic_name, &validation_result, NULL);
-  if (RMW_RET_OK != ret) {
-    return NULL;
-  }
-  if (RMW_NAMESPACE_VALID != validation_result) {
-    const char * reason = rmw_node_name_validation_result_string(validation_result);
-    RMW_SET_ERROR_MSG_WITH_FORMAT_STRING("invalid node namespace: %s", reason);
-    return NULL;
+  if (!qos_policies->avoid_ros_namespace_conventions) {
+    int validation_result = RMW_TOPIC_VALID;
+    rmw_ret_t ret = rmw_validate_full_topic_name(topic_name, &validation_result, NULL);
+    if (RMW_RET_OK != ret) {
+      return NULL;
+    }
+    if (RMW_TOPIC_VALID != validation_result) {
+      const char * reason = rmw_full_topic_name_validation_result_string(validation_result);
+      RMW_SET_ERROR_MSG_WITH_FORMAT_STRING("invalid topic name: %s", reason);
+      return NULL;
+    }
   }
   if (qos_policies->history == RMW_QOS_POLICY_HISTORY_UNKNOWN) {
     RMW_SET_ERROR_MSG("Invalid QoS policy");
     return NULL;
   }
 
+  rmw_ret_t ret;
   size_t msg_size;
   rosidl_runtime_c__Sequence__bound dummy;
   if (ret = rmw_get_serialized_message_size(type_supports, &dummy, &msg_size) != RMW_RET_OK) {
-    return ret;
+    RMW_SET_ERROR_MSG("Unable to get serialized message size");
+    return NULL;
   }
 
   rmw_subscription_t * sub = rmw_subscription_allocate();
@@ -170,9 +174,24 @@ rmw_subscription_get_actual_qos(
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(qos, RMW_RET_INVALID_ARGUMENT);
+  if (subscription->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
-  RMW_SET_ERROR_MSG("rmw_subscription_get_actual_qos hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  qos->history = RMW_QOS_POLICY_HISTORY_KEEP_LAST;
+  qos->depth = ((pub_sub_data_t *)subscription->data)->depth;
+  qos->reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+  qos->durability = RMW_QOS_POLICY_DURABILITY_VOLATILE;
+  qos->deadline.nsec = 0;
+  qos->deadline.sec = 0;
+  qos->lifespan.nsec = 0;
+  qos->lifespan.sec = 0;
+  qos->liveliness = RMW_QOS_POLICY_LIVELINESS_AUTOMATIC;
+  qos->liveliness_lease_duration.nsec = 0;
+  qos->liveliness_lease_duration.sec = 0;
+  qos->avoid_ros_namespace_conventions = false;
+
+  return RMW_RET_OK;
 }
 
 rmw_ret_t
@@ -185,10 +204,27 @@ rmw_take(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(ros_message, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(taken, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocation, RMW_RET_INVALID_ARGUMENT);
+  if (subscription->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
-  RMW_SET_ERROR_MSG("rmw_subscription_get_actual_qos hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  // TODO(nightduck): Implement per-message size, in case messages are smaller than upper bound
+  size_t size = ((pub_sub_data_t*)subscription->data)->msg_size;
+
+  msg_ref_t msg_ref = hazcat_take(subscription);
+  if (msg_ref.msg == NULL) {
+    taken = false;
+    return RMW_RET_OK;
+  } else {
+    taken = true;
+  }
+
+  memcpy(ros_message, msg_ref.msg, size);
+
+  int offset = PTR_TO_OFFSET(msg_ref.alloc, msg_ref.msg);
+  DEALLOCATE(msg_ref.alloc, offset);
+
+  return RMW_RET_OK;
 }
 
 rmw_ret_t
@@ -203,10 +239,30 @@ rmw_take_with_info(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(ros_message, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(taken, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(message_info, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocation, RMW_RET_INVALID_ARGUMENT);
+  if (subscription->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
-  RMW_SET_ERROR_MSG("rmw_take_with_info hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  // TODO: Populate message_info
+  (void*)message_info;
+
+  // TODO(nightduck): Implement per-message size, in case messages are smaller than upper bound
+  size_t size = ((pub_sub_data_t*)subscription->data)->msg_size;
+
+  msg_ref_t msg_ref = hazcat_take(subscription);
+  if (msg_ref.msg == NULL) {
+    taken = false;
+    return RMW_RET_OK;
+  } else {
+    taken = true;
+  }
+
+  memcpy(ros_message, msg_ref.msg, size);
+
+  int offset = PTR_TO_OFFSET(msg_ref.alloc, msg_ref.msg);
+  DEALLOCATE(msg_ref.alloc, offset);
+
+  return RMW_RET_OK;
 }
 
 rmw_ret_t
@@ -219,7 +275,9 @@ rmw_take_serialized_message(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(serialized_message, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(taken, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocation, RMW_RET_INVALID_ARGUMENT);
+  if (subscription->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
   RMW_SET_ERROR_MSG("rmw_take_serialized_message hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -237,7 +295,9 @@ rmw_take_serialized_message_with_info(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(serialized_message, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(taken, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(message_info, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocation, RMW_RET_INVALID_ARGUMENT);
+  if (subscription->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
   RMW_SET_ERROR_MSG("rmw_take_serialized_message_with_info hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -253,7 +313,9 @@ rmw_take_loaned_message(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(loaned_message, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(taken, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocation, RMW_RET_INVALID_ARGUMENT);
+  if (subscription->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
   msg_ref_t msg_ref = hazcat_take(subscription);
   *loaned_message = msg_ref.msg;
@@ -280,10 +342,24 @@ rmw_take_loaned_message_with_info(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(loaned_message, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(taken, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(message_info, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocation, RMW_RET_INVALID_ARGUMENT);
+  if (subscription->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
-  RMW_SET_ERROR_MSG("rmw_take_loaned_message_with_info hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  // TODO: Populate message_info
+  (void*)message_info;
+
+  msg_ref_t msg_ref = hazcat_take(subscription);
+  *loaned_message = msg_ref.msg;
+  if (*loaned_message == NULL) {
+    taken = false;
+  } else {
+    taken = true;
+  }
+
+  // TODO(nightduck): Check for errors in hazcat_take
+
+  return RMW_RET_OK;
 }
 
 rmw_ret_t
@@ -292,12 +368,15 @@ rmw_return_loaned_message_from_subscription(
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(loaned_message, RMW_RET_INVALID_ARGUMENT);
+  if (subscription->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
   // This is a work-around since this rmw discards the allocator reference after hazcat_take
   hma_allocator_t * alloc = get_matching_alloc(subscription, loaned_message);
   if (alloc == NULL) {
     RMW_SET_ERROR_MSG("Returning message that wasn't loaned");
-    return RMW_RET_INVALID_ARGUMENT;
+    return RMW_RET_ERROR;
   }
 
   int offset = PTR_TO_OFFSET(alloc, loaned_message);
@@ -312,6 +391,7 @@ rmw_take_event(const rmw_event_t * event_handle, void * event_info, bool * taken
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(event_handle, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(event_info, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(taken, RMW_RET_INVALID_ARGUMENT);
+
   RMW_SET_ERROR_MSG("rmw_take_event hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
 }
@@ -329,11 +409,42 @@ rmw_take_sequence(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(message_sequence, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(message_info_sequence, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(taken, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocation, RMW_RET_INVALID_ARGUMENT);
-  (void)count;
+  if (subscription->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
+  if (0u == count) {
+    RMW_SET_ERROR_MSG("count cannot be 0");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
 
-  RMW_SET_ERROR_MSG("rmw_take_sequence hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  if (count > message_sequence->capacity) {
+    RMW_SET_ERROR_MSG("Insufficient capacity in message_sequence");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+
+  if (count > message_info_sequence->capacity) {
+    RMW_SET_ERROR_MSG("Insufficient capacity in message_info_sequence");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
+
+  *taken = 0;
+  bool taken_flag = false;
+  rmw_ret_t ret = RMW_RET_OK;
+  for(int i = 0; i < count; i++) {
+    ret = rmw_take_with_info(subscription, message_sequence->data[*taken], &taken_flag,
+      &message_info_sequence->data[*taken], allocation);
+    if (ret != RMW_RET_OK) {
+      break;
+    }
+    if (taken_flag) {
+      (*taken)++;
+    }
+  }
+
+  message_sequence->size = *taken;
+  message_info_sequence->size = *taken;
+
+  return ret;
 }
 
 rmw_ret_t

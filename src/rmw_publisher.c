@@ -126,7 +126,6 @@ rmw_create_publisher(
       return NULL;
     }
   }
-  data->depth = qos_policies->depth;
   data->msg_size = msg_size;
 
   size_t len = strlen(topic_name);
@@ -216,7 +215,7 @@ rmw_publisher_get_actual_qos(const rmw_publisher_t * publisher, rmw_qos_profile_
   qos->history = RMW_QOS_POLICY_HISTORY_KEEP_LAST;
   qos->depth = ((pub_sub_data_t *)publisher->data)->mq->elem->len;
   qos->reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
-  qos->durability = RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL;
+  qos->durability = RMW_QOS_POLICY_DURABILITY_VOLATILE;
   qos->deadline.nsec = 0;
   qos->deadline.sec = 0;
   qos->lifespan.nsec = 0;

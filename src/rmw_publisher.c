@@ -67,12 +67,40 @@ rmw_create_publisher(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(topic_name, NULL);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(qos_policies, NULL);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher_options, NULL);
+  if (node->implementation_identifier != rmw_get_implementation_identifier()) {
+    return NULL;
+  }
+  if (!qos_policies->avoid_ros_namespace_conventions) {
+    int validation_result = RMW_TOPIC_VALID;
+    rmw_ret_t ret = rmw_validate_full_topic_name(topic_name, &validation_result, NULL);
+    if (RMW_RET_OK != ret) {
+      return NULL;
+    }
+    if (RMW_TOPIC_VALID != validation_result) {
+      const char * reason = rmw_full_topic_name_validation_result_string(validation_result);
+      RMW_SET_ERROR_MSG_WITH_FORMAT_STRING("invalid topic name: %s", reason);
+      return NULL;
+    }
+  }
+  if (qos_policies->history == RMW_QOS_POLICY_HISTORY_UNKNOWN) {
+    RMW_SET_ERROR_MSG("Invalid QoS policy");
+    return NULL;
+  }
+  // if (qos_policies->durability == RMW_QOS_POLICY_DURABILITY_VOLATILE) {
+  //   RMW_SET_ERROR_MSG("All publishers have transient local durability in rmw_hazcat");
+  //   return NULL;
+  // }
+  // if (qos_policies->reliability == RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT) {
+  //   RMW_SET_ERROR_MSG("Best effort qos not supported in rmw_hazcat");
+  //   return NULL;
+  // }
 
   rmw_ret_t ret;
   size_t msg_size;
   rosidl_runtime_c__Sequence__bound dummy;
-  if (ret = rmw_get_serialized_message_size(type_support, &dummy, &msg_size) != RMW_RET_OK) {
-    return ret;
+  if ((ret = rmw_get_serialized_message_size(type_supports, &dummy, &msg_size)) != RMW_RET_OK) {
+    RMW_SET_ERROR_MSG("Unable to get serialized message size");
+    return NULL;
   }
 
   rmw_publisher_t * pub = rmw_publisher_allocate();
@@ -91,10 +119,15 @@ rmw_create_publisher(
   if (data->alloc == NULL) {
     // TODO(nightduck): Replace hard coded values when serialization works
     //                  Remove all together when TLSF allocator is done
-    data->alloc = create_cpu_ringbuf_allocator(msg_size, 200);
+    data->alloc =
+      create_cpu_ringbuf_allocator(msg_size, (qos_policies->depth == 0) ? 10 : qos_policies->depth);
+    if (data->alloc == NULL) {
+      RMW_SET_ERROR_MSG("Unable to create allocator for publisher");
+      return NULL;
+    }
   }
+  data->depth = qos_policies->depth;
   data->msg_size = msg_size;
-
 
   size_t len = strlen(topic_name);
   pub->implementation_identifier = rmw_get_implementation_identifier();
@@ -103,9 +136,15 @@ rmw_create_publisher(
   pub->options = *publisher_options;
   pub->can_loan_messages = true;
 
+  if (pub->topic_name == NULL) {
+    RMW_SET_ERROR_MSG("Unable to allocate string for publisher's topic name");
+    return NULL;
+  }
   snprintf(pub->topic_name, len, topic_name);
 
-  hazcat_register_publisher(pub);
+  if (ret = hazcat_register_publisher(pub) != RMW_RET_OK) {
+    return NULL;
+  };
 
   return pub;
 }
@@ -115,6 +154,12 @@ rmw_destroy_publisher(rmw_node_t * node, rmw_publisher_t * publisher)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_INVALID_ARGUMENT);
+  if (node->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
+  if (publisher->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
   // Remove publisher from it's message queue
   rmw_ret_t ret = hazcat_unregister_publisher(publisher);
@@ -164,9 +209,24 @@ rmw_publisher_get_actual_qos(const rmw_publisher_t * publisher, rmw_qos_profile_
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(qos, RMW_RET_INVALID_ARGUMENT);
+  if (publisher->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
-  RMW_SET_ERROR_MSG("rmw_publisher_get_actual_qos hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  qos->history = RMW_QOS_POLICY_HISTORY_KEEP_LAST;
+  qos->depth = ((pub_sub_data_t *)publisher->data)->mq->elem->len;
+  qos->reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+  qos->durability = RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL;
+  qos->deadline.nsec = 0;
+  qos->deadline.sec = 0;
+  qos->lifespan.nsec = 0;
+  qos->lifespan.sec = 0;
+  qos->liveliness = RMW_QOS_POLICY_LIVELINESS_AUTOMATIC;
+  qos->liveliness_lease_duration.nsec = 0;
+  qos->liveliness_lease_duration.sec = 0;
+  qos->avoid_ros_namespace_conventions = false;
+
+  return RMW_RET_OK;
 }
 
 rmw_ret_t
@@ -177,10 +237,23 @@ rmw_publish(
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(ros_message, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocation, RMW_RET_INVALID_ARGUMENT);
+  if (publisher->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
-  RMW_SET_ERROR_MSG("rmw_publish hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  // TODO(nightduck): Implement per-message size, in case messages are smaller than upper bound
+  size_t size = ((pub_sub_data_t*)publisher->data)->msg_size;
+
+  hma_allocator_t * alloc = ((pub_sub_data_t*)publisher->data)->alloc;
+  int offset = ALLOCATE(alloc, size);
+  if (offset < 0) {
+    RMW_SET_ERROR_MSG("unable to allocate memory for message");
+    return RMW_RET_ERROR;
+  }
+  void * zc_msg = GET_PTR(alloc, offset, void);
+  memcpy(zc_msg, ros_message, size);
+
+  return hazcat_publish(publisher, zc_msg, size);
 }
 
 rmw_ret_t
@@ -191,7 +264,9 @@ rmw_publish_serialized_message(
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(serialized_message, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocation, RMW_RET_INVALID_ARGUMENT);
+  if (publisher->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
   RMW_SET_ERROR_MSG("rmw_publish_serialized_message hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -206,10 +281,21 @@ rmw_borrow_loaned_message(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_support, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(ros_message, RMW_RET_INVALID_ARGUMENT);
+  if (publisher->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
+  if (*ros_message != NULL) {
+    RMW_SET_ERROR_MSG("Non-null message given to rmw_borrow_loaned_message");
+    return RMW_RET_INVALID_ARGUMENT;
+  }
 
+  rmw_ret_t ret;
   size_t size;
   rosidl_runtime_c__Sequence__bound dummy;
-  rmw_get_serialized_message_size(type_support, &dummy, &size);
+  if ((ret = rmw_get_serialized_message_size(type_support, &dummy, &size)) != RMW_RET_OK) {
+    RMW_SET_ERROR_MSG("Unable to get length of message");
+    return ret;
+  }
 
   hma_allocator_t * alloc = ((pub_sub_data_t*)publisher->data)->alloc;
   int offset = ALLOCATE(alloc, size);
@@ -217,9 +303,9 @@ rmw_borrow_loaned_message(
     RMW_SET_ERROR_MSG("unable to allocate memory for message");
     return RMW_RET_ERROR;
   }
-  *ros_message = GET_PTR(alloc, offset, void)
+  *ros_message = GET_PTR(alloc, offset, void);
 
-  return 
+  return RMW_RET_OK;
 }
 
 rmw_ret_t
@@ -231,7 +317,7 @@ rmw_return_loaned_message_from_publisher(const rmw_publisher_t * publisher, void
   hma_allocator_t * alloc = ((pub_sub_data_t*)publisher->data)->alloc;
 
   int offset = PTR_TO_OFFSET(alloc, loaned_message);
-  DEALLOCATE(alloc, loaned_message);
+  DEALLOCATE(alloc, offset);
 
   return RMW_RET_OK;
 }
@@ -244,14 +330,13 @@ rmw_publish_loaned_message(
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(ros_message, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocation, RMW_RET_INVALID_ARGUMENT);
 
   hma_allocator_t * alloc = ((pub_sub_data_t*)publisher->data)->alloc;
 
   // TODO(nightduck): Implement per-message size, in case messages are smaller than upper bound
   size_t size = ((pub_sub_data_t*)publisher->data)->msg_size;
 
-  return hazcat_publish(pub, ros_message, size);
+  return hazcat_publish(publisher, ros_message, size);
 }
 
 rmw_ret_t rmw_get_publishers_info_by_topic(

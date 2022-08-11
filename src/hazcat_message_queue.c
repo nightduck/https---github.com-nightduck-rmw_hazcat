@@ -105,6 +105,18 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
     it = it->next;
   }
   if (it == NULL) {
+    // Allocate some memory for mq_list insertion below. If unable to, fail before shm operations
+    char * file_name = rmw_allocate(strlen(shmem_file));
+    if (file_name == NULL) {
+      RMW_SET_ERROR_MSG("Failed to allocate string for filename");
+      return RMW_RET_ERROR;
+    }
+    it = rmw_allocate(sizeof(mq_node_t));
+    if (it == NULL) {
+      RMW_SET_ERROR_MSG("Failed to allocate memory for mq_node_t");
+      return RMW_RET_ERROR;
+    }
+
     // Make it through the list without finding a match, so it hasn't been open here yet
     int fd = shm_open(shmem_file, O_CREAT | O_RDWR, 0600);
     if (fd == -1) {
@@ -157,9 +169,7 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
     }
 
     // Insert mq into mq_list
-    char * file_name = rmw_allocate(strlen(shmem_file));
     snprintf(file_name, NAME_MAX, shmem_file);
-    it = rmw_allocate(sizeof(mq_node_t));
     it->next = mq_list.next;
     it->file_name = file_name;
     it->fd = fd;
@@ -266,7 +276,8 @@ hazcat_register_subscription(rmw_subscription_t * sub)
 
   mq_node_t * it = ((pub_sub_data_t *)sub->data)->mq;
 
-  // Set next index to look at, ignore any existing messages in queue
+  // Set next index to look at, ignore any existing messages in queue, this is in line with the
+  // volatile rmw_qos_durability policy
   ((pub_sub_data_t *)sub->data)->next_index = it->elem->index;
 
   // TODO(nightduck): Generic macros in case I want to change the type of this thing.
@@ -289,7 +300,7 @@ hazcat_register_subscription(rmw_subscription_t * sub)
 }
 
 rmw_ret_t
-hazcat_publish(rmw_publisher_t * pub, void * msg, size_t len)
+hazcat_publish(const rmw_publisher_t * pub, void * msg, size_t len)
 {
   // Acquire lock on shared file
   struct flock fl = {F_RDLCK, SEEK_SET, 0, 0, 0};
@@ -355,8 +366,8 @@ hazcat_publish(rmw_publisher_t * pub, void * msg, size_t len)
 // Fetches a message reference from shared message queue.
 // TODO(nightduck): Refactor alloc and message as argument references, and return
 // rmw_ret_t value
-void *
-hazcat_take(rmw_subscription_t * sub)
+msg_ref_t
+hazcat_take(const rmw_subscription_t * sub)
 {
   // Acquire lock on shared file
   struct flock fl = {F_RDLCK, SEEK_SET, 0, 0, 0};
@@ -469,7 +480,7 @@ hazcat_take(rmw_subscription_t * sub)
     // TODO(nightduck): Return something?
   }
 
-  return ret.msg;
+  return ret;
 }
 
 rmw_ret_t
@@ -604,7 +615,7 @@ get_matching_alloc(const rmw_subscription_t * sub, const void * msg) {
     entry_t * entry = get_entry(mq, ((pub_sub_data_t *)sub->data)->array_num, index);
     
     hma_allocator_t * msg_alloc = hashtable_get(ht, entry->alloc_shmem_id);
-    void * entry_msg = GET_PTR(src_alloc, entry->offset, void);
+    void * entry_msg = GET_PTR(msg_alloc, entry->offset, void);
     if (entry_msg == msg) {
       return msg_alloc;
     }

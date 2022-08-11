@@ -67,16 +67,32 @@ rmw_create_subscription(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(topic_name, NULL);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(qos_policies, NULL);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription_options, NULL);
+  if (node->implementation_identifier != rmw_get_implementation_identifier()) {
+    return NULL;
+  }
+  int validation_result = RMW_NAMESPACE_VALID;
+  rmw_ret_t ret = rmw_validate_namespace(topic_name, &validation_result, NULL);
+  if (RMW_RET_OK != ret) {
+    return NULL;
+  }
+  if (RMW_NAMESPACE_VALID != validation_result) {
+    const char * reason = rmw_node_name_validation_result_string(validation_result);
+    RMW_SET_ERROR_MSG_WITH_FORMAT_STRING("invalid node namespace: %s", reason);
+    return NULL;
+  }
+  if (qos_policies->history == RMW_QOS_POLICY_HISTORY_UNKNOWN) {
+    RMW_SET_ERROR_MSG("Invalid QoS policy");
+    return NULL;
+  }
 
-  rmw_ret_t ret;
   size_t msg_size;
   rosidl_runtime_c__Sequence__bound dummy;
-  if (ret = rmw_get_serialized_message_size(type_support, &dummy, &msg_size) != RMW_RET_OK) {
+  if (ret = rmw_get_serialized_message_size(type_supports, &dummy, &msg_size) != RMW_RET_OK) {
     return ret;
   }
 
   rmw_subscription_t * sub = rmw_subscription_allocate();
-  if (pub == NULL) {
+  if (sub == NULL) {
     RMW_SET_ERROR_MSG("Unable to allocate memory for subscription");
     return NULL;
   }
@@ -91,6 +107,10 @@ rmw_create_subscription(
   if (data->alloc == NULL) {
     // TODO(nightduck): Remove when TLSF allocator is done
     data->alloc = create_cpu_ringbuf_allocator(msg_size, qos_policies->depth);
+    if (data->alloc == NULL) {
+      RMW_SET_ERROR_MSG("Unable to create allocator for subscription");
+      return NULL;
+    }
   }
   data->depth = qos_policies->depth;
   data->msg_size = msg_size;
@@ -102,9 +122,15 @@ rmw_create_subscription(
   sub->options = *subscription_options;
   sub->can_loan_messages = true;
 
+  if (sub->topic_name == NULL) {
+    RMW_SET_ERROR_MSG("Unable to allocate string for subscription's topic name");
+    return NULL;
+  }
   snprintf(sub->topic_name, len, topic_name);
 
-  hazcat_register_subscription(sub);
+  if (ret = hazcat_register_subscription(sub) != RMW_RET_OK) {
+    return NULL;
+  };
 
   return sub;
 }
@@ -116,6 +142,12 @@ rmw_destroy_subscription(
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription, RMW_RET_INVALID_ARGUMENT);
+  if (node->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
+  if (subscription->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
   // Remove publisher from it's message queue
   rmw_ret_t ret = hazcat_unregister_subscription(subscription);
@@ -155,8 +187,6 @@ rmw_take(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(taken, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocation, RMW_RET_INVALID_ARGUMENT);
 
-
-  ros_message = hazcat_take(subscription);
   RMW_SET_ERROR_MSG("rmw_subscription_get_actual_qos hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
 }
@@ -225,7 +255,8 @@ rmw_take_loaned_message(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(taken, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(allocation, RMW_RET_INVALID_ARGUMENT);
 
-  *loaned_message = hazcat_take(subscription);
+  msg_ref_t msg_ref = hazcat_take(subscription);
+  *loaned_message = msg_ref.msg;
   if (*loaned_message == NULL) {
     taken = false;
   } else {
@@ -262,9 +293,10 @@ rmw_return_loaned_message_from_subscription(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(loaned_message, RMW_RET_INVALID_ARGUMENT);
 
+  // This is a work-around since this rmw discards the allocator reference after hazcat_take
   hma_allocator_t * alloc = get_matching_alloc(subscription, loaned_message);
   if (alloc == NULL) {
-    RMW_SET_ERROR_MSG("Returning message that wasn't loaned")
+    RMW_SET_ERROR_MSG("Returning message that wasn't loaned");
     return RMW_RET_INVALID_ARGUMENT;
   }
 

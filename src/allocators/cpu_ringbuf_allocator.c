@@ -26,6 +26,10 @@ cpu_ringbuf_allocator_t * create_cpu_ringbuf_allocator(size_t item_size, size_t 
     NULL, sizeof(cpu_ringbuf_allocator_t) + (item_size + sizeof(atomic_int)) * ring_size,
     0, LOCAL_GRANULARITY, ALLOC_RING, CPU, 0);
 
+  if (alloc == NULL) {
+    return NULL;
+  }
+
   alloc->count = 0;
   alloc->rear_it = 0;
   alloc->item_size = item_size;

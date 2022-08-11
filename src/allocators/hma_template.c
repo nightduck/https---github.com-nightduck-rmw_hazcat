@@ -78,7 +78,7 @@ void * reserve_memory_for_allocator(size_t shared_size, size_t dev_size, size_t 
     PROT_NONE, MAP_ANON | MAP_PRIVATE, -1, 0);
   if (rough_allocation == MAP_FAILED) {
     printf("reserve_memory_for_allocator couldn't reserve memroy\n");
-    handle_error("mmap");
+    return NULL;
   }
 
   // Get aligned start for allocation within that range
@@ -116,6 +116,9 @@ struct hma_allocator * create_shared_allocator(
 
   if (hint == NULL) {
     hint = reserve_memory_for_allocator(shared_size, dev_size, dev_granularity);
+    if (hint == NULL) {
+      return NULL;
+    }
   } else {
     // Writing it this way because the ROS2 linters don't like multiline else-if statements
     if (((int64_t)hint % LOCAL_GRANULARITY) != 0 ||

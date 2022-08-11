@@ -28,6 +28,8 @@
 #include "rmw/validate_namespace.h"
 #include "rmw/validate_node_name.h"
 
+#include "rmw_hazcat/hazcat_message_queue.h"
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -93,9 +95,13 @@ rmw_subscription_count_matched_publishers(
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher_count, RMW_RET_INVALID_ARGUMENT);
+  if (subscription->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
-  RMW_SET_ERROR_MSG("rmw_subscription_count_matched_publishers hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  *publisher_count = ((pub_sub_data_t *)subscription->data)->mq->elem->pub_count;
+
+  return RMW_RET_OK;
 }
 
 rmw_ret_t
@@ -105,9 +111,13 @@ rmw_publisher_count_matched_subscriptions(
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription_count, RMW_RET_INVALID_ARGUMENT);
+  if (publisher->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
-  RMW_SET_ERROR_MSG("rmw_publisher_count_matched_subscriptions hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  *subscription_count = ((pub_sub_data_t *)publisher->data)->mq->elem->sub_count;
+
+  return RMW_RET_OK;
 }
 #ifdef __cplusplus
 }

@@ -393,7 +393,7 @@ rmw_get_serialized_message_size(
     RMW_SET_ERROR_MSG("error reading introspection for message");
     return RMW_RET_INVALID_ARGUMENT;
   }
-  size = members->size_of_;
+  *size = members->size_of_;
 
   return RMW_RET_OK;
 }

@@ -33,7 +33,7 @@ rmw_create_service(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(qos_profile, RMW_RET_INVALID_ARGUMENT);
 
   RMW_SET_ERROR_MSG("rmw_create_service hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  return NULL;
 }
 
 rmw_ret_t

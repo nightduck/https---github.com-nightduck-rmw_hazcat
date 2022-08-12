@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "rmw/allocators.h"
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
+
+#include "rmw_hazcat/types.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -23,7 +26,18 @@ rmw_wait_set_t *
 rmw_create_wait_set(rmw_context_t * context, size_t max_conditions)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, NULL);
-  (void)max_conditions;
+
+  waitset_t * ws = rmw_allocate(sizeof(waitset_t) + max_conditions * sizeof(void*));
+  ws->num_subs = 0;
+  ws->num_gcs = 0;
+  ws->num_cls = 0;
+  ws->num_srv = 0;
+  ws->num_evt = 0;
+  ws->subscriptions = (rmw_subscription_t*)(ws+1);
+  ws->guard_conditions = (rmw_guard_condition_t*)(ws+1);
+  ws->clients = (rmw_client_t*)(ws+1);
+  ws->services = (rmw_service_t*)(ws+1);
+  ws->events = (rmw_events_t*)(ws+1);
 
   RMW_SET_ERROR_MSG("rmw_create_wait_set hasn't been implemented yet");
   return NULL;

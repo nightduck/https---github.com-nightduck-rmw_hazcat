@@ -25,7 +25,6 @@ rmw_compare_gids_equal(
   const rmw_gid_t * gid2,
   bool * result)
 {
-  *result = false;
 
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(gid1, RMW_RET_INVALID_ARGUMENT);
   if (gid1->implementation_identifier != rmw_get_implementation_identifier()) {
@@ -37,6 +36,8 @@ rmw_compare_gids_equal(
     RMW_SET_ERROR_MSG("Provided gid does not match expected implementation");
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(result, RMW_RET_INVALID_ARGUMENT);
+  *result = false;
 
   if (memcmp(gid1->data, gid2->data, RMW_GID_STORAGE_SIZE) == 0) {
     *result = true;

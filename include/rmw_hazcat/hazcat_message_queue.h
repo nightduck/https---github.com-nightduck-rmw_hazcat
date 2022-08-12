@@ -93,12 +93,13 @@ typedef struct message_reference
 
 typedef struct pub_sub_data
 {
-  hma_allocator_t * alloc;   // Pointer to allocator used when copying to preferred domain
-  mq_node_t * mq;            // Pointer to message queue associated with topic
+  hma_allocator_t * alloc;  // Pointer to allocator used when copying to preferred domain
+  mq_node_t * mq;           // Pointer to message queue associated with topic
   uint16_t next_index;      // Next index in message queue to read
   uint8_t array_num;        // Identifies domain to message queue
   int depth;                // Max backlogged messages
   size_t msg_size;          // Upperbound of message size
+  rmw_gid_t gid;            // gid of publisher
 } pub_sub_data_t;
 
 typedef struct sub_options

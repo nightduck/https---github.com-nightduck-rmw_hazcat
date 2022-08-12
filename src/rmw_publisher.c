@@ -31,6 +31,20 @@
 extern "C"
 {
 #endif
+rmw_gid_t
+generate_gid()
+{
+  rmw_gid_t gid;
+  gid.implementation_identifier = rmw_get_implementation_identifier();
+  memset(&gid.data[0], 0, RMW_GID_STORAGE_SIZE);
+
+  static size_t dummy_guid = 0;
+  dummy_guid++;
+  memcpy(&gid.data[0], &dummy_guid, sizeof(size_t));
+
+  return gid;
+}
+
 rmw_ret_t
 rmw_init_publisher_allocation(
   const rosidl_message_type_support_t * type_support,
@@ -127,6 +141,7 @@ rmw_create_publisher(
     }
   }
   data->msg_size = msg_size;
+  data->gid = generate_gid();
 
   size_t len = strlen(topic_name);
   pub->implementation_identifier = rmw_get_implementation_identifier();
@@ -179,15 +194,22 @@ rmw_get_gid_for_publisher(const rmw_publisher_t * publisher, rmw_gid_t * gid)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(gid, RMW_RET_INVALID_ARGUMENT);
+  if (publisher->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
-  RMW_SET_ERROR_MSG("rmw_publisher_assert_liveliness hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  *gid = ((pub_sub_data_t*)publisher->data)->gid;
+
+  return RMW_RET_OK;;
 }
 
 rmw_ret_t
 rmw_publisher_assert_liveliness(const rmw_publisher_t * publisher)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_INVALID_ARGUMENT);
+  if (publisher->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
   RMW_SET_ERROR_MSG("rmw_publisher_assert_liveliness hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;
@@ -197,6 +219,9 @@ rmw_ret_t
 rmw_publisher_wait_for_all_acked(const rmw_publisher_t * publisher, rmw_time_t wait_timeout)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_INVALID_ARGUMENT);
+  if (publisher->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
   (void)wait_timeout;
 
   RMW_SET_ERROR_MSG("rmw_publisher_wait_for_all_acked hasn't been implemented yet");

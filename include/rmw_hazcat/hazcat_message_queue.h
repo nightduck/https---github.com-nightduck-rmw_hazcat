@@ -73,6 +73,8 @@ typedef struct message_queue
 
   // After structure is an array of ref_bits_t objects numbering len
   // Following that there is an array of entry_t objects, one for each domain, each of size len
+
+  // TODO: Add condition variables and mutex here to broadcast to subscribers when data is ready
 } message_queue_t;
 
 // Little wrapper to store these references in linked list

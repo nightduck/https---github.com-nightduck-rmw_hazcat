@@ -39,8 +39,11 @@ rmw_create_wait_set(rmw_context_t * context, size_t max_conditions)
   ws->services = (rmw_service_t*)(ws+1);
   ws->events = (rmw_events_t*)(ws+1);
 
-  RMW_SET_ERROR_MSG("rmw_create_wait_set hasn't been implemented yet");
-  return NULL;
+  rmw_wait_set_t * rmw_ws = rmw_wait_set_allocate();
+  rmw_ws->data = (void*)ws;
+  rmw_ws->implementation_identifier = rmw_get_implementation_identifier();
+
+  return rmw_ws;
 }
 
 rmw_ret_t
@@ -69,6 +72,19 @@ rmw_wait(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(events, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(wait_set, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(wait_timeout, RMW_RET_INVALID_ARGUMENT);
+
+  waitset_t * ws = (waitset_t *)wait_set->data;
+
+  // While timeout not expired and no triggers
+    for(int i = 0; i < subscriptions->subscriber_count; i++) {
+      // if subscription available
+        ws->subscriptions[ws->num_subs++] = subscriptions->subscribers[i];
+    }
+    for(int i = 0; i < guard_conditions->guard_condition_count; i++) {
+      // if guard condition triggered available
+        ws->guard_conditions[ws->num_gcs++] = guard_conditions->guard_conditions[i];
+    }
+
 
   RMW_SET_ERROR_MSG("rmw_wait hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;

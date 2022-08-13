@@ -30,11 +30,11 @@ typedef struct waitset {
   size_t num_cls;
   size_t num_srv;
   size_t num_evt;
-  rmw_subscription_t * subscriptions;
-  rmw_guard_condition_t * guard_conditions;
-  rmw_client_t * clients;
-  rmw_service_t * services;
-  rmw_events_t * events;
+  rmw_subscription_t ** subscriptions;
+  rmw_guard_condition_t ** guard_conditions;
+  rmw_client_t ** clients;
+  rmw_service_t ** services;
+  rmw_events_t ** events;
 } waitset_t;
 
 #ifdef __cplusplus

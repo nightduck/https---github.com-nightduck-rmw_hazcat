@@ -16,9 +16,13 @@
 extern "C"
 {
 #endif
+
+#define _GNU_SOURCE
+
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -26,6 +30,8 @@ extern "C"
 
 #include "rmw_hazcat/hashtable.h"
 #include "rmw_hazcat/hazcat_message_queue.h"
+#include "rmw_hazcat/guard_condition.h"
+
 
 char shmem_file[NAME_MAX] = "/ros2_hazcat.";
 const int dir_offset = 13;
@@ -50,7 +56,7 @@ hazcat_init()
 rmw_ret_t
 hazcat_fini()
 {
-  // Clear mq list
+  // Clear mq list, any existing entries are in use by other processes
   mq_node_t * it = mq_list.next;
   while (it != NULL) {
     mq_list.next = it->next;
@@ -160,6 +166,10 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
       }
       mq->pub_count = 0;  // One of these will be incremented after function returns
       mq->sub_count = 0;
+
+      // Get guard condition and copy it completely within message queue
+      guard_condition_t * gc = rmw_create_guard_condition(data->context);
+      copy_guard_condition(&mq->gc, &mq->gc_impl, gc);
     } else {
       mq = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
       if (mq == MAP_FAILED) {
@@ -360,6 +370,9 @@ hazcat_publish(const rmw_publisher_t * pub, void * msg, size_t len)
     return RMW_RET_ERROR;
   }
 
+  // Signal that data was published
+  rmw_trigger_guard_condition(mq->gc);
+
   return RMW_RET_OK;
 }
 
@@ -486,7 +499,7 @@ hazcat_take(const rmw_subscription_t * sub)
 rmw_ret_t
 hazcat_unregister_publisher(rmw_publisher_t * pub)
 {
-  // Register associated allocator, so we can lookup address given shared mem id
+  // TODO(nightduck): What if different publishers use the same allocator?
   hashtable_remove(ht, ((pub_sub_data_t *)pub->data)->alloc->shmem_id);
 
   mq_node_t * it = ((pub_sub_data_t *)pub->data)->mq;
@@ -524,6 +537,9 @@ hazcat_unregister_publisher(rmw_publisher_t * pub)
     // }
     // front->next = it->next;
 
+    close(mq_list.elem->gc_impl.pfd[0]);
+    close(mq_list.elem->gc_impl.pfd[1]);
+
     struct stat st;
     fstat(it->fd, &st);
     if (munmap(it->elem, st.st_size)) {
@@ -549,7 +565,7 @@ hazcat_unregister_publisher(rmw_publisher_t * pub)
 rmw_ret_t
 hazcat_unregister_subscription(rmw_subscription_t * sub)
 {
-  // Register associated allocator, so we can lookup address given shared mem id
+  // TODO(nightduck): What if different subscriptions use the same allocator?
   hashtable_remove(ht, ((pub_sub_data_t *)sub->data)->alloc->shmem_id);
 
   mq_node_t * it = ((pub_sub_data_t *)sub->data)->mq;
@@ -580,6 +596,9 @@ hazcat_unregister_subscription(rmw_subscription_t * sub)
 
   // If count is zero, then destroy message queue
   if (it->elem->pub_count == 0 && it->elem->sub_count == 0) {
+    close(mq_list.elem->gc_impl.pfd[0]);
+    close(mq_list.elem->gc_impl.pfd[1]);
+
     struct stat st;
     fstat(it->fd, &st);
     if (munmap(it->elem, st.st_size)) {

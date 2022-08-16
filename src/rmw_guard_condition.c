@@ -18,6 +18,9 @@
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
 
+#include "rmw_hazcat/types.h"
+#include "rmw_hazcat/guard_condition.h"
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -36,8 +39,19 @@ rmw_create_guard_condition(
     return NULL;
   }
   guard->implementation_identifier = rmw_get_implementation_identifier();
-  guard->data = (void*)0L;
   guard->context = context;
+
+  guard_condition_t * gc = rmw_allocate(sizeof(guard_condition_t));
+  if (pipe(gc->pfd) != 0) {
+    rmw_free(gc);
+    rmw_guard_condition_free(guard);
+    RMW_SET_ERROR_MSG("failed to create pipe for guard condition");
+    return NULL;
+  }
+  gc->ev.events = EPOLLIN;
+  gc->ev.data.fd = gc->pfd[0];
+
+  guard->data = gc;
 
   return guard;
 }
@@ -48,19 +62,30 @@ rmw_destroy_guard_condition(
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(guard_condition, RMW_RET_INVALID_ARGUMENT);
 
+  guard_condition_t * gc = (guard_condition_t*)guard_condition->data;
+  close(gc->pfd[0]);
+  close(gc->pfd[1]);
+  rmw_free(guard_condition->data);
   rmw_free(guard_condition);
 
   return RMW_RET_OK;
 }
 
+// Triggers guard condition. Note, in this rmw, guards may be created in other processes, so
+// the implementation and context pointers may not be valid. Don't rely on them
 rmw_ret_t
 rmw_trigger_guard_condition(
   const rmw_guard_condition_t * guard_condition)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(guard_condition, RMW_RET_INVALID_ARGUMENT);
 
-  long * counter = (long*)guard_condition->data;
-  *counter++;
+  // Write one byte to the pipe owned by guard condition, sending a signal to anyone waiting on it
+  guard_condition_t * gc = guard_condition->data;
+  uint8_t dummy = 0x1;
+  if (write(gc->pfd[1], &dummy, 1) < 1) {
+    RMW_SET_ERROR_MSG("Error triggering guard condition");
+    return RMW_RET_ERROR;
+  }
 
   return RMW_RET_OK;
 }

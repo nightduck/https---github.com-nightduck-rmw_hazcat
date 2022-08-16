@@ -138,6 +138,12 @@ if(BUILD_TESTING)
     rcutils
   )
 
+  ament_add_gtest(guard_condition_test test/hazcat_guard_condition.cpp)
+  target_link_libraries(guard_condition_test rmw_hazcat)
+  ament_target_dependencies(guard_condition_test
+    rcutils
+  )
+
   ament_add_gtest(message_queue_test test/hazcat_message_queue_test.cpp)
   target_link_libraries(message_queue_test hazcat_message_queue hazcat_allocators rmw_hazcat)
   ament_target_dependencies(message_queue_test

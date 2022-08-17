@@ -33,8 +33,8 @@ extern "C"
 #include "rmw_hazcat/guard_condition.h"
 
 
-char shmem_file[NAME_MAX] = "/ros2_hazcat.";
-const int dir_offset = 13;
+char shmem_file[NAME_MAX] = "/ros2_hazcat";
+const int dir_offset = 12;
 
 mq_node_t mq_list = {NULL, NULL, -1, NULL};
 
@@ -98,7 +98,7 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
 
   // Add header, and replace all slashes with periods (because no subdirs in /dev/shm)
   snprintf(shmem_file + dir_offset, NAME_MAX - dir_offset, topic_name);
-  char * current_pos = shmem_file + dir_offset - 1;  // Set to index of first period
+  char * current_pos = shmem_file + dir_offset;  // Set to index of first period
   while (current_pos) {
     *current_pos = '.';
     current_pos = strchr(current_pos, '/');
@@ -168,7 +168,10 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
       mq->sub_count = 0;
 
       // Get guard condition and copy it completely within message queue
-      guard_condition_t * gc = rmw_create_guard_condition(data->context);
+      rmw_guard_condition_t * gc;
+      if ((gc = rmw_create_guard_condition(data->context)) == NULL) {
+        return RMW_RET_ERROR;
+      }
       copy_guard_condition(&mq->gc, &mq->gc_impl, gc);
     } else {
       mq = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -371,9 +374,7 @@ hazcat_publish(const rmw_publisher_t * pub, void * msg, size_t len)
   }
 
   // Signal that data was published
-  rmw_trigger_guard_condition(mq->gc);
-
-  return RMW_RET_OK;
+  return rmw_trigger_guard_condition(&mq->gc);
 }
 
 // Fetches a message reference from shared message queue.
@@ -537,8 +538,7 @@ hazcat_unregister_publisher(rmw_publisher_t * pub)
     // }
     // front->next = it->next;
 
-    close(mq_list.elem->gc_impl.pfd[0]);
-    close(mq_list.elem->gc_impl.pfd[1]);
+    destroy_guard_condition_impl(&mq_list.elem->gc_impl);
 
     struct stat st;
     fstat(it->fd, &st);
@@ -596,8 +596,7 @@ hazcat_unregister_subscription(rmw_subscription_t * sub)
 
   // If count is zero, then destroy message queue
   if (it->elem->pub_count == 0 && it->elem->sub_count == 0) {
-    close(mq_list.elem->gc_impl.pfd[0]);
-    close(mq_list.elem->gc_impl.pfd[1]);
+    destroy_guard_condition_impl(&mq_list.elem->gc_impl);
 
     struct stat st;
     fstat(it->fd, &st);

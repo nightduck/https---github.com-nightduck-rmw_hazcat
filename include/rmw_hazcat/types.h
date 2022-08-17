@@ -88,7 +88,7 @@ typedef struct message_queue
   // TODO(nightduck): Track sub count for each domain, to do staggered dealloc operations
 
   // The guard condition to trigger when this queue has a message
-  rmw_guard_condition_t * gc;
+  rmw_guard_condition_t gc;
   guard_condition_t gc_impl;
 
   // After structure is an array of ref_bits_t objects numbering len

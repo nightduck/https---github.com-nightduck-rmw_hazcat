@@ -34,24 +34,15 @@ extern "C"
 
 #include "rmw_hazcat/types.h"
 
-// Utility method to copy guard condition and implementation into specified location. Used when
-// guard condition needs to be in shared memory
-inline rmw_ret_t
+rmw_ret_t
+destroy_guard_condition_impl(
+  guard_condition_t * gc);
+
+rmw_ret_t
 copy_guard_condition(
   rmw_guard_condition_t * dest,
   guard_condition_t * dest_impl,
-  rmw_guard_condition_t * src)
-{
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(dest, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(dest_impl, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(src, RMW_RET_INVALID_ARGUMENT);
-
-  *dest = *src;
-  *dest_impl = *(guard_condition_t *)src->data;
-  dest->data = dest_impl;
-
-  return RMW_RET_OK;
-}
+  rmw_guard_condition_t * src);
 
 #ifdef __cplusplus
 }

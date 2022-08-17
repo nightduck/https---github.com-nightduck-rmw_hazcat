@@ -31,7 +31,7 @@ rmw_guard_condition_t *
 rmw_create_guard_condition(
   rmw_context_t * context)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, NULL);
 
   rmw_guard_condition_t * guard = rmw_guard_condition_allocate();
   if (guard == NULL) {
@@ -63,8 +63,8 @@ rmw_destroy_guard_condition(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(guard_condition, RMW_RET_INVALID_ARGUMENT);
 
   guard_condition_t * gc = (guard_condition_t*)guard_condition->data;
-  close(gc->pfd[0]);
-  close(gc->pfd[1]);
+
+  destroy_guard_condition_impl(gc);
   rmw_free(guard_condition->data);
   rmw_free(guard_condition);
 

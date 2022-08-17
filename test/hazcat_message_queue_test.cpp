@@ -26,6 +26,11 @@
 #include <tuple>
 #include <vector>
 
+#include "rcutils/allocator.h"
+#include "rcutils/macros.h"
+#include "rcutils/strdup.h"
+
+#include "test_msgs/msg/basic_types.h"
 #include "test_msgs/msg/bounded_sequences.hpp"
 #include "std_msgs/msg/int32.hpp"
 
@@ -74,7 +79,11 @@ public:
   rmw_subscription_t * cuda_sub;
   cpu_ringbuf_allocator_t * cpu_alloc;
   cuda_ringbuf_allocator_t * cuda_alloc;
-  rmw_qos_profile_t pub_qos, sub_qos;
+  rmw_qos_profile_t pub_qos = rmw_qos_profile_system_default,
+    sub_qos = rmw_qos_profile_system_default;
+  rmw_init_options_t init_options;
+  rmw_context_t context;
+  rmw_node_t * node;
 };
 
 TEST(HashtableTest, hashtable_test) {
@@ -187,7 +196,7 @@ TEST(HashtableTest, hashtable_test) {
   hashtable_fini(ht);
 }
 
-// Not a test, just resets
+// Not a test, just resets and deletes zombie files from previously crashed tests
 TEST_F(MessageQueueTest, setup) {
   CHECK_DRV(cuInit(0));  // Initialize CUDA driver
 
@@ -203,39 +212,38 @@ TEST_F(MessageQueueTest, setup) {
     }
     closedir(d);
   }
+
+  init_options = rmw_get_zero_initialized_init_options();
+  ASSERT_EQ(RMW_RET_OK, rmw_init_options_init(&init_options, rcutils_get_default_allocator()))
+    << rcutils_get_error_string().str;
+  init_options.enclave = rcutils_strdup("/", rcutils_get_default_allocator());
+  ASSERT_STREQ("/", init_options.enclave);
+  context = rmw_get_zero_initialized_context();
+  ASSERT_EQ(RMW_RET_OK, rmw_init(&init_options, &context)) << rcutils_get_error_string().str;
+  constexpr char node_name[] = "my_test_node";
+  constexpr char node_namespace[] = "/my_test_ns";
+  node = rmw_create_node(&context, node_name, node_namespace, 1, true);
+  ASSERT_NE(nullptr, node) << rcutils_get_error_string().str;
 }
 
 TEST_F(MessageQueueTest, creation_and_registration) {
-  rmw_node_t dummy;                                     // Content doesn't matter
-  rosidl_message_type_support_t dummy_type_support;     // Content doesn't matter
+  const rosidl_message_type_support_t * type_support =
+    ROSIDL_GET_MSG_TYPE_SUPPORT(test_msgs, msg, BasicTypes);
 
-  cpu_pub = rmw_publisher_allocate();
-  cpu_sub = rmw_subscription_allocate();
-  pub_sub_data_t * pub_data = reinterpret_cast<pub_sub_data_t *>(
-    rmw_allocate(sizeof(pub_sub_data_t)));
-  pub_sub_data_t * sub_data = reinterpret_cast<pub_sub_data_t *>(
-    rmw_allocate(sizeof(pub_sub_data_t)));
+  rmw_ret_t ret;
+  size_t msg_size;
+  rosidl_runtime_c__Sequence__bound dummy;
+  ASSERT_EQ(RMW_RET_OK, rmw_get_serialized_message_size(type_support, &dummy, &msg_size));
+  cpu_alloc = create_cpu_ringbuf_allocator(msg_size, 10);
+  rmw_publisher_options_t cpu_pub_opts = {.rmw_specific_publisher_payload = cpu_alloc};
+  rmw_subscription_options_t cpu_sub_opts = {.rmw_specific_subscription_payload = cpu_alloc};
 
-  // Populate data->alloc with allocator
-  cpu_alloc = create_cpu_ringbuf_allocator(8, 10);
-  pub_data->alloc = reinterpret_cast<hma_allocator_t *>(cpu_alloc);
-  sub_data->alloc = reinterpret_cast<hma_allocator_t *>(cpu_alloc);
-  pub_data->depth = 5;
-  sub_data->depth = 1;
+  pub_qos.depth = 5;
+  sub_qos.depth = 1;
 
-  cpu_pub->implementation_identifier = rmw_get_implementation_identifier();
-  cpu_pub->data = pub_data;
-  cpu_pub->topic_name = "test";
-  cpu_pub->can_loan_messages = true;
-
-  cpu_sub->implementation_identifier = rmw_get_implementation_identifier();
-  cpu_sub->data = sub_data;
-  cpu_sub->topic_name = "test";
-  cpu_sub->can_loan_messages = true;
-
-  ASSERT_EQ(hazcat_init(), RMW_RET_OK);
-
-  ASSERT_EQ(hazcat_register_publisher(cpu_pub), RMW_RET_OK);
+  cpu_pub = rmw_create_publisher(node, type_support, "/test", &pub_qos, &cpu_pub_opts);
+  ASSERT_NE(nullptr, cpu_pub);
+  pub_sub_data_t * pub_data = reinterpret_cast<pub_sub_data_t *>(cpu_pub->data);
 
   mq_node = pub_data->mq;
   message_queue_t * mq = mq_node->elem;
@@ -249,7 +257,9 @@ TEST_F(MessageQueueTest, creation_and_registration) {
   EXPECT_EQ(mq->pub_count, 1);
   EXPECT_EQ(mq->sub_count, 0);
 
-  ASSERT_EQ(hazcat_register_subscription(cpu_sub), RMW_RET_OK);
+  cpu_sub = rmw_create_subscription(node, type_support, "/test", &sub_qos, &cpu_sub_opts);
+  ASSERT_NE(nullptr, cpu_sub);
+  pub_sub_data_t * sub_data = reinterpret_cast<pub_sub_data_t *>(cpu_sub->data);
 
   EXPECT_EQ(mq, sub_data->mq->elem);    // Should use same message queue
   EXPECT_EQ(mq_node, sub_data->mq);
@@ -321,44 +331,24 @@ TEST_F(MessageQueueTest, basic_rw) {
 }
 
 TEST_F(MessageQueueTest, multi_domain_registration) {
-  cpu_sub2 = rmw_subscription_allocate();
-  cuda_sub = rmw_subscription_allocate();
-  cuda_pub = rmw_publisher_allocate();
+  const rosidl_message_type_support_t * type_support =
+    ROSIDL_GET_MSG_TYPE_SUPPORT(test_msgs, msg, BasicTypes);
 
-  pub_sub_data_t * cpu_sub_data = reinterpret_cast<pub_sub_data_t *>(
-    rmw_allocate(sizeof(pub_sub_data_t)));
-  pub_sub_data_t * cuda_sub_data = reinterpret_cast<pub_sub_data_t *>(
-    rmw_allocate(sizeof(pub_sub_data_t)));
-  pub_sub_data_t * pub_data = reinterpret_cast<pub_sub_data_t *>(
-    rmw_allocate(sizeof(pub_sub_data_t)));
-
-  // Populate subscriptions
-  cuda_alloc = create_cuda_ringbuf_allocator(8, 10);
-  pub_data->alloc = reinterpret_cast<hma_allocator_t *>(cuda_alloc);
-  cuda_sub_data->alloc = reinterpret_cast<hma_allocator_t *>(cuda_alloc);
-  cpu_sub_data->alloc = reinterpret_cast<hma_allocator_t *>(cpu_alloc);
-  pub_data->depth = 5;
-  cpu_sub_data->depth = 10;
-  cuda_sub_data->depth = 10;
-
-  cuda_pub->implementation_identifier = rmw_get_implementation_identifier();
-  cuda_pub->data = pub_data;
-  cuda_pub->topic_name = "test";
-  cuda_pub->can_loan_messages = true;
-
-  cpu_sub2->implementation_identifier = rmw_get_implementation_identifier();
-  cpu_sub2->data = cpu_sub_data;
-  cpu_sub2->topic_name = "test";
-  cpu_sub2->can_loan_messages = true;
-
-  cuda_sub->implementation_identifier = rmw_get_implementation_identifier();
-  cuda_sub->data = cuda_sub_data;
-  cuda_sub->topic_name = "test";
-  cuda_sub->can_loan_messages = true;
+  rmw_ret_t ret;
+  size_t msg_size;
+  rosidl_runtime_c__Sequence__bound dummy;
+  ASSERT_EQ(RMW_RET_OK, rmw_get_serialized_message_size(type_support, &dummy, &msg_size));
+  cuda_alloc = create_cuda_ringbuf_allocator(msg_size, 10);
+  rmw_subscription_options_t cpu_sub_opts = {.rmw_specific_subscription_payload = cpu_alloc};
+  rmw_subscription_options_t cuda_sub_opts = {.rmw_specific_subscription_payload = cuda_alloc};
+  rmw_publisher_options_t cuda_pub_opts = {.rmw_specific_publisher_payload = cuda_alloc};
 
   message_queue_t * mq = mq_node->elem;
 
-  ASSERT_EQ(hazcat_register_subscription(cuda_sub), RMW_RET_OK);
+  sub_qos.depth = 10;
+  cuda_sub = rmw_create_subscription(node, type_support, "/test", &sub_qos, &cuda_sub_opts);
+  ASSERT_NE(nullptr, cuda_sub);
+  pub_sub_data_t * cuda_sub_data = reinterpret_cast<pub_sub_data_t *>(cuda_sub->data);
   EXPECT_EQ(mq_node, cuda_sub_data->mq);
   EXPECT_EQ(mq, cuda_sub_data->mq->elem);
   EXPECT_EQ(mq->index, 2);
@@ -368,7 +358,10 @@ TEST_F(MessageQueueTest, multi_domain_registration) {
   EXPECT_EQ(mq->pub_count, 1);
   EXPECT_EQ(mq->sub_count, 2);
 
-  ASSERT_EQ(hazcat_register_publisher(cuda_pub), RMW_RET_OK);
+  pub_qos.depth = 5;
+  cuda_pub = rmw_create_publisher(node, type_support, "/test", &pub_qos, &cuda_pub_opts);
+  ASSERT_NE(nullptr, cuda_pub);
+  pub_sub_data_t * pub_data = reinterpret_cast<pub_sub_data_t *>(cuda_pub->data);
   EXPECT_EQ(mq_node, pub_data->mq);
   EXPECT_EQ(mq, pub_data->mq->elem);
   EXPECT_EQ(mq->index, 2);
@@ -378,8 +371,10 @@ TEST_F(MessageQueueTest, multi_domain_registration) {
   EXPECT_EQ(mq->pub_count, 2);
   EXPECT_EQ(mq->sub_count, 2);
 
-
-  ASSERT_EQ(hazcat_register_subscription(cpu_sub2), RMW_RET_OK);
+  sub_qos.depth = 10;
+  cpu_sub2 = rmw_create_subscription(node, type_support, "/test", &sub_qos, &cpu_sub_opts);
+  ASSERT_NE(nullptr, cpu_sub2);
+  pub_sub_data_t * cpu_sub_data = reinterpret_cast<pub_sub_data_t *>(cpu_sub2->data);
   EXPECT_EQ(mq, cpu_sub_data->mq->elem);    // Should use same message queue
   EXPECT_EQ(mq_node, cpu_sub_data->mq);
   EXPECT_EQ(mq->index, 2);
@@ -500,45 +495,41 @@ TEST_F(MessageQueueTest, unregister_cuda) {
   rmw_publisher_t * cuda_pub = MessageQueueTest::cuda_pub;
   rmw_subscription_t * cuda_sub = MessageQueueTest::cuda_sub;
 
-  EXPECT_EQ(hazcat_unregister_publisher(cuda_pub), RMW_RET_OK);
+  hma_allocator_t * cuda_alloc = reinterpret_cast<hma_allocator_t *>(
+      reinterpret_cast<pub_sub_data_t *>(cuda_pub->data)->alloc);
+
+  EXPECT_EQ(RMW_RET_OK, rmw_destroy_publisher(node, cuda_pub));
 
   EXPECT_EQ(mq->pub_count, 1);
   EXPECT_EQ(mq->sub_count, 3);
 
-  EXPECT_EQ(hazcat_unregister_subscription(cuda_sub), RMW_RET_OK);
+  EXPECT_EQ(RMW_RET_OK, rmw_destroy_subscription(node, cuda_sub));
 
   EXPECT_EQ(mq->pub_count, 1);
   EXPECT_EQ(mq->sub_count, 2);
 
-  EXPECT_EQ(hazcat_unregister_subscription(cpu_sub2), RMW_RET_OK);
+  EXPECT_EQ(RMW_RET_OK, rmw_destroy_subscription(node, cpu_sub2));
 
   EXPECT_EQ(mq->pub_count, 1);
   EXPECT_EQ(mq->sub_count, 1);
 
-  cuda_ringbuf_unmap(
-    reinterpret_cast<hma_allocator_t *>(
-      reinterpret_cast<pub_sub_data_t *>(cuda_pub->data)->alloc));
-  rmw_free(cuda_pub->data);
-  rmw_free(cuda_sub->data);
-  rmw_free(cpu_sub2->data);
-  rmw_publisher_free(cuda_pub);
-  rmw_subscription_free(cuda_sub);
-  rmw_subscription_free(cpu_sub2);
+  cuda_ringbuf_unmap(cuda_alloc);
 }
 
 TEST_F(MessageQueueTest, unregister_and_destroy) {
   message_queue_t * mq = mq_node->elem;
 
-  EXPECT_EQ(hazcat_unregister_publisher(cpu_pub), RMW_RET_OK);
+  hma_allocator_t * cpu_alloc = reinterpret_cast<hma_allocator_t *>(
+      reinterpret_cast<pub_sub_data_t *>(cpu_pub->data)->alloc);
+
+  EXPECT_EQ(RMW_RET_OK, rmw_destroy_publisher(node, cpu_pub));
 
   EXPECT_EQ(mq->pub_count, 0);
   EXPECT_EQ(mq->sub_count, 1);
 
-  EXPECT_EQ(hazcat_unregister_subscription(cpu_sub), RMW_RET_OK);
+  EXPECT_EQ(RMW_RET_OK, rmw_destroy_subscription(node, cpu_sub));
 
   // Reopen file
-  char shmem_file[128];
-  snprintf(shmem_file, sizeof(shmem_file), "/ros2_hazcat.%s", cpu_pub->topic_name);
   int fd = shm_open(mq_node->file_name, O_CREAT | O_RDWR, 0777);
   ASSERT_NE(fd, -1);
 
@@ -550,13 +541,7 @@ TEST_F(MessageQueueTest, unregister_and_destroy) {
   // Now remove it again
   EXPECT_EQ(shm_unlink(mq_node->file_name), 0);
 
-  EXPECT_EQ(hazcat_fini(), RMW_RET_OK);
+  cpu_ringbuf_unmap(cpu_alloc);
 
-  cpu_ringbuf_unmap(
-    reinterpret_cast<hma_allocator_t *>(
-      reinterpret_cast<pub_sub_data_t *>(cpu_pub->data)->alloc));
-  rmw_free(cpu_pub->data);
-  rmw_free(cpu_sub->data);
-  rmw_publisher_free(cpu_pub);
-  rmw_subscription_free(cpu_sub);
+  EXPECT_EQ(rmw_shutdown(&context), RMW_RET_OK);
 }

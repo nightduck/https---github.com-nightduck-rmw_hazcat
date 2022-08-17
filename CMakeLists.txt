@@ -44,6 +44,7 @@ set(hazcat_allocator_sources
 
 set(hazcat_message_queue_sources
   src/hazcat_message_queue.c
+  src/guard_condition_impl.c
 )
 
 set(rmw_hazcat_sources

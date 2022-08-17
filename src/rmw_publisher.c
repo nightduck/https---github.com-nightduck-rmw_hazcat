@@ -140,8 +140,10 @@ rmw_create_publisher(
       return NULL;
     }
   }
+  data->depth = qos_policies->depth;
   data->msg_size = msg_size;
   data->gid = generate_gid();
+  data->context = node->context;
 
   size_t len = strlen(topic_name);
   pub->implementation_identifier = rmw_get_implementation_identifier();
@@ -154,7 +156,7 @@ rmw_create_publisher(
     RMW_SET_ERROR_MSG("Unable to allocate string for publisher's topic name");
     return NULL;
   }
-  snprintf(pub->topic_name, len, topic_name);
+  snprintf(pub->topic_name, len + 1, topic_name);
 
   if (ret = hazcat_register_publisher(pub) != RMW_RET_OK) {
     return NULL;
@@ -396,15 +398,14 @@ rmw_ret_t rmw_get_publishers_info_by_topic(
   return RMW_RET_UNSUPPORTED;
 }
 
-// TODO: Have 1 
-// rmw_publisher_options_t
-// rmw_get_default_publisher_options(void)
-// {
-//   rmw_publisher_options_t publisher_options = {
-//     .rmw_specific_publisher_payload = NULL,
-//   };
-//   return publisher_options;
-// }
+rmw_publisher_options_t
+rmw_get_default_publisher_options(void)
+{
+  rmw_publisher_options_t publisher_options = {
+    .rmw_specific_publisher_payload = NULL,
+  };
+  return publisher_options;
+}
 #ifdef __cplusplus
 }
 #endif

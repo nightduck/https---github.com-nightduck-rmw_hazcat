@@ -32,6 +32,12 @@ rmw_create_wait_set(rmw_context_t * context, size_t max_conditions)
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, NULL);
 
   waitset_t * ws = rmw_allocate(sizeof(waitset_t) + max_conditions * sizeof(struct epoll_event));
+  if (ws == NULL) {
+    RMW_SET_ERROR_MSG("Unable to allocate memory for waitset implementation");
+    return NULL;
+  }
+  ws->evlist = (struct epoll_event *)ws + 1;
+  ws->epollfd = epoll_create(max_conditions);
   // ws->num_subs = 0;
   // ws->num_gcs = 0;
   // ws->num_cls = 0;
@@ -44,7 +50,11 @@ rmw_create_wait_set(rmw_context_t * context, size_t max_conditions)
   // ws->events = (rmw_events_t*)(ws+1);
 
   rmw_wait_set_t * rmw_ws = rmw_wait_set_allocate();
-  rmw_ws->data = (void*)ws;
+  if (rmw_ws == NULL) {
+    RMW_SET_ERROR_MSG("Unable to allocate memory for waitset implementation");
+    return NULL;
+  }
+  rmw_ws->data = (void *)ws;
   rmw_ws->implementation_identifier = rmw_get_implementation_identifier();
 
   return rmw_ws;
@@ -53,11 +63,91 @@ rmw_create_wait_set(rmw_context_t * context, size_t max_conditions)
 rmw_ret_t
 rmw_destroy_wait_set(rmw_wait_set_t * wait_set)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(wait_set, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(wait_set, RMW_RET_ERROR);
+  if (wait_set->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
-  RMW_SET_ERROR_MSG("rmw_destroy_wait_set hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  rmw_ret_t ret;
+  waitset_t * ws = wait_set->data;
+  close(ws->epollfd);
+  rmw_free(ws);
+  rmw_free(wait_set);
+
+  return RMW_RET_OK;
 }
+
+void
+set_all_null(
+  rmw_subscriptions_t * subscriptions,
+  rmw_guard_conditions_t * guard_conditions,
+  rmw_services_t * services,
+  rmw_clients_t * clients,
+  rmw_events_t * events)
+{
+  if (subscriptions != NULL) {
+    for (int i = 0; i < subscriptions->subscriber_count; i++) {
+      subscriptions->subscribers[i] = NULL;
+    }
+  }
+  if (guard_conditions != NULL) {
+    for (int i = 0; i < guard_conditions->guard_condition_count; i++) {
+      guard_conditions->guard_conditions[i] = NULL;
+    }
+  }
+  if (services != NULL) {
+    for (int i = 0; i < services->service_count; i++) {
+      services->services[i] = NULL;
+    }
+  }
+  if (clients != NULL) {
+    for (int i = 0; i < clients->client_count; i++) {
+      clients->clients[i] = NULL;
+    }
+  }
+  if (events != NULL) {
+    for (int i = 0; i < events->event_count; i++) {
+      events->events[i] = NULL;
+    }
+  }
+}
+
+#ifdef __linux__
+int
+clear_epoll(
+  rmw_subscriptions_t * subscriptions,
+  rmw_guard_conditions_t * guard_conditions,
+  rmw_services_t * services,
+  rmw_clients_t * clients,
+  rmw_events_t * events,
+  int epollfd)
+{
+  if (subscriptions != NULL) {
+    for (int i = 0; i < subscriptions->subscriber_count; i++) {
+      RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscriptions->subscribers[0], RMW_RET_ERROR);
+      pub_sub_data_t * sub = (pub_sub_data_t *)subscriptions->subscribers[0];
+      guard_condition_t * gc = &(sub->mq->elem->gc_impl);
+      if (epoll_ctl(epollfd, EPOLL_CTL_DEL, gc->pfd[1], &gc->ev) == -1 && errno != ENOENT) {
+        RMW_SET_ERROR_MSG("Unable to remove subscription from epoll");
+        perror("epoll_ctl: ");
+        return -1;
+      }
+    }
+  }
+
+  if (guard_conditions != NULL) {
+    for (int i = 0; i < guard_conditions->guard_condition_count; i++) {
+      RCUTILS_CHECK_ARGUMENT_FOR_NULL(guard_conditions->guard_conditions[0], RMW_RET_ERROR);
+      guard_condition_t * gc = (guard_condition_t *)guard_conditions->guard_conditions[i];
+      if (epoll_ctl(epollfd, EPOLL_CTL_DEL, gc->pfd[1], &gc->ev) == -1 && errno != ENOENT) {
+        RMW_SET_ERROR_MSG("Unable to remove guard condition from epoll");
+        perror("epoll_ctl: ");
+        return -1;
+      }
+    }
+  }
+}
+#endif
 
 rmw_ret_t
 rmw_wait(
@@ -69,13 +159,16 @@ rmw_wait(
   rmw_wait_set_t * wait_set,
   const rmw_time_t * wait_timeout)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscriptions, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(guard_conditions, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(services, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(clients, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(events, RMW_RET_INVALID_ARGUMENT);
+  // RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscriptions, RMW_RET_INVALID_ARGUMENT);
+  // RCUTILS_CHECK_ARGUMENT_FOR_NULL(guard_conditions, RMW_RET_INVALID_ARGUMENT);
+  // RCUTILS_CHECK_ARGUMENT_FOR_NULL(services, RMW_RET_INVALID_ARGUMENT);
+  // RCUTILS_CHECK_ARGUMENT_FOR_NULL(clients, RMW_RET_INVALID_ARGUMENT);
+  // RCUTILS_CHECK_ARGUMENT_FOR_NULL(events, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(wait_set, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(wait_timeout, RMW_RET_INVALID_ARGUMENT);
+  if (wait_set->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
   waitset_t * ws = (waitset_t *)wait_set->data;
   ws->len = 0;
@@ -85,30 +178,45 @@ rmw_wait(
   // and clients. guard_conditions are just added directly. No strategy for events. Waiting on the
   // poll/epoll will reveal which topics or guards are ready
 
-  for(int i = 0; i < subscriptions->subscriber_count; i++) {
-    #ifdef __linux__
-    guard_condition_t * gc = &((pub_sub_data_t *)((rmw_subscription_t *)subscriptions->subscribers[0])->data)->mq->elem->gc;
-    if (epoll_ctl(ws->epollfd, EPOLL_CTL_ADD, gc->pfd[1], &gc->ev) == -1 && errno != EEXIST) {
-      RMW_SET_ERROR_MSG("Unable to wait on subscription");
-      return RMW_RET_ERROR;
+  if (subscriptions != NULL) {
+    for (int i = 0; i < subscriptions->subscriber_count; i++) {
+      #ifdef __linux__
+      RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscriptions->subscribers[0], RMW_RET_ERROR);
+      pub_sub_data_t * sub = (pub_sub_data_t *)subscriptions->subscribers[0];
+      guard_condition_t * gc = &(sub->mq->elem->gc_impl);
+      if (epoll_ctl(ws->epollfd, EPOLL_CTL_ADD, gc->pfd[1], &gc->ev) == -1 && errno != EEXIST) {
+        RMW_SET_ERROR_MSG("Unable to wait on subscription");
+        perror("epoll_wait: ");
+        return RMW_RET_ERROR;
+      }
+      #else
+      // TODO(nightduck): Use poll instead
+      #endif
+      ws->len++;
     }
-    #else
-    // TODO(nightduck): Use poll instead
-    #endif
-    ws->len++;
   }
 
-  for(int i = 0; i < guard_conditions->guard_condition_count; i++) {
-    #ifdef __linux__
-    guard_condition_t * gc = (guard_condition_t *)((rmw_subscription_t *)guard_conditions->guard_conditions[i])->data;
-    if (epoll_ctl(ws->epollfd, EPOLL_CTL_ADD, gc->pfd[1], &gc->ev) == -1) {
-      RMW_SET_ERROR_MSG("Unable to wait on guard condition");
-      return RMW_RET_ERROR;
+  if (guard_conditions != NULL) {
+    for (int i = 0; i < guard_conditions->guard_condition_count; i++) {
+      #ifdef __linux__
+      RCUTILS_CHECK_ARGUMENT_FOR_NULL(guard_conditions->guard_conditions[0], RMW_RET_ERROR);
+      guard_condition_t * gc = (guard_condition_t *)guard_conditions->guard_conditions[i];
+      gc->ev.data.ptr = guard_conditions->guard_conditions[i];
+      if (epoll_ctl(ws->epollfd, EPOLL_CTL_ADD, gc->pfd[1], &gc->ev) == -1 && errno != EEXIST) {
+        RMW_SET_ERROR_MSG("Unable to wait on guard condition");
+        perror("epoll_wait: ");
+        return RMW_RET_ERROR;
+      }
+      #else
+      // TODO(nightduck): Use poll instead
+      #endif
+      ws->len++;
     }
-    #else
-    // TODO(nightduck): Use poll instead
-    #endif
-    ws->len++;
+  }
+
+  if (ws->len == 0) {
+    // Nothing to wait on, just return
+    return RMW_RET_TIMEOUT;
   }
 
   // Calculate timeout and wait
@@ -122,30 +230,56 @@ rmw_wait(
   int ready = epoll_wait(ws->epollfd, ws->evlist, ws->len, timeout);
   if (ready == -1) {
     RMW_SET_ERROR_MSG("rmw_wait error in epoll_wait");
+    perror("epoll_wait: ");
     return RMW_RET_ERROR;
-  }
-  for(int i = 0; i < ready; i++) {
+  } else if (ready == 0) {
+    // Uncomment if you can't make guarantees about persistence of executable-to-executor assignment
+    clear_epoll(subscriptions, guard_conditions, services, clients, events, ws->epollfd);
 
+    // Timed out, set everything to null
+    set_all_null(subscriptions, guard_conditions, services, clients, events);
+    return RMW_RET_TIMEOUT;
   }
+  // for(int i = 0; i < ready; i++) {
+  //   if((ws->evlist[i].events & EPOLLERR) ||
+  //     (ws->evlist[i].events & EPOLLHUP) ||
+  //     (!(ws->evlist[i].events & EPOLLIN)))
+  //   {
+  //     RMW_SET_ERROR_MSG("Error reading triggered guard condition");
+  //     continue;
+  //   }
+  //   ws->evlist[i].data.fd;
   #else
   // TODO(nightduck): Use poll instead
   #endif
 
+  // We don't interpret the event list from polling, we only use it to signal SOMETHING is ready,
+  // manually check everything to see if it is
 
-  // // While timeout not expired and no triggers
-  //   for(int i = 0; i < subscriptions->subscriber_count; i++) {
-  //     // if subscription available
-  //       ws->subscriptions[ws->num_subs++] = subscriptions->subscribers[i];
-  //   }
-  //   for(int i = 0; i < guard_conditions->guard_condition_count; i++) {
-  //     // if guard condition triggered available
-  //       ws->guard_conditions[ws->num_gcs++] = guard_conditions->guard_conditions[i];
-  //   }
+  if (subscriptions != NULL) {
+    for (int i = 0; i < subscriptions->subscriber_count; i++) {
+      // if next index and my index equal, set pointer to null, because no message available
+      pub_sub_data_t * sub = subscriptions->subscribers[i];
+      message_queue_t * mq = sub->mq->elem;
+      if (sub->next_index == mq->index) {
+        subscriptions->subscribers[i] = NULL;
+      }
+    }
+  }
+  if (guard_conditions != NULL) {
+    for (int i = 0; i < guard_conditions->guard_condition_count; i++) {
+      // attempt to read from pipe, if unsuccessful, set to null
+      guard_condition_t * gc = guard_conditions->guard_conditions[i];
+      if (guard_condition_trigger_count(gc) <= 0) {
+        guard_conditions->guard_conditions[i] = NULL;
+      }
+    }
+  }
 
+  // Services, clients, and events not supported
+  set_all_null(NULL, NULL, services, clients, events);
 
-
-  RMW_SET_ERROR_MSG("rmw_wait hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  return RMW_RET_OK;
 }
 #ifdef __cplusplus
 }

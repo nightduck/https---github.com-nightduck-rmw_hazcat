@@ -26,7 +26,7 @@ extern "C"
 
 // Remap isn't stored in the function pointers, because it's often called on an allocator whose
 // local partition isn't mapped in, so it would be useless
-hma_allocator_t * (* remap_fps[NUM_STRATS * NUM_DEV_TYPES])(hma_allocator_t *) =
+hma_allocator_t * (*remap_fps[NUM_STRATS * NUM_DEV_TYPES])(hma_allocator_t *) =
 {
   cpu_ringbuf_remap,
   cuda_ringbuf_remap

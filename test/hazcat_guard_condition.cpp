@@ -14,6 +14,12 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <vector>
+
 #include "osrf_testing_tools_cpp/scope_exit.hpp"
 
 #ifdef __linux__
@@ -23,12 +29,6 @@
 #include "rcutils/allocator.h"
 #include "rcutils/strdup.h"
 #include "rcutils/testing/fault_injection.h"
-
-#include <atomic>
-#include <string>
-#include <thread>
-#include <tuple>
-#include <vector>
 
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
@@ -73,8 +73,8 @@ protected:
 TEST_F(TestGuardCondition, signal_test) {
   rmw_guard_condition_t * gc1 = rmw_create_guard_condition(&context);
   rmw_guard_condition_t * gc2 = rmw_create_guard_condition(&context);
-  guard_condition_t * gc1_impl = (guard_condition_t *)gc1->data;
-  guard_condition_t * gc2_impl = (guard_condition_t *)gc2->data;
+  guard_condition_t * gc1_impl = reinterpret_cast<guard_condition_t *>(gc1->data);
+  guard_condition_t * gc2_impl = reinterpret_cast<guard_condition_t *>(gc2->data);
 
   bool check = false;
 
@@ -83,24 +83,24 @@ TEST_F(TestGuardCondition, signal_test) {
   ASSERT_EQ(rmw_trigger_guard_condition(gc1), RMW_RET_OK);
 
   std::thread t([&]() {
-    // Wait on gc, other thread should set check true and then trigger guard
-    int epollfd = epoll_create1(0);
-    struct epoll_event ev;
-    if (epollfd == -1) {
+      // Wait on gc, other thread should set check true and then trigger guard
+      int epollfd = epoll_create1(0);
+      struct epoll_event ev;
+      if (epollfd == -1) {
         perror("epoll_create1");
         exit(EXIT_FAILURE);
-    }
-    ASSERT_NE(epoll_ctl(epollfd, EPOLL_CTL_ADD, gc1_impl->pfd[0], &gc1_impl->ev), -1);
-    ASSERT_NE(epoll_wait(epollfd, &ev, 1, 10), -1);
-    close(epollfd);
+      }
+      ASSERT_NE(epoll_ctl(epollfd, EPOLL_CTL_ADD, gc1_impl->pfd[0], &gc1_impl->ev), -1);
+      ASSERT_NE(epoll_wait(epollfd, &ev, 1, 10), -1);
+      close(epollfd);
 
-    EXPECT_TRUE(check);
+      EXPECT_TRUE(check);
 
-    // Set check back to false and trigger guard
-    check = false;
-    ASSERT_EQ(rmw_trigger_guard_condition(gc2), RMW_RET_OK);
-    close(epollfd);
-  });
+      // Set check back to false and trigger guard
+      check = false;
+      ASSERT_EQ(rmw_trigger_guard_condition(gc2), RMW_RET_OK);
+      close(epollfd);
+    });
 
   // Wait on gc, other thread should set check to false and trigger guard
   struct epoll_event ev;

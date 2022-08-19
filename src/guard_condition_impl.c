@@ -23,6 +23,22 @@ extern "C"
 {
 #endif
 
+char dummy[4096];
+
+rmw_ret_t
+create_guard_condition_impl(
+  guard_condition_t * gc)
+{
+  if (pipe(gc->pfd) != 0) {
+    RMW_SET_ERROR_MSG("failed to create pipe for guard condition");
+    return RMW_RET_ERROR;
+  }
+  gc->ev.events = EPOLLIN;
+  gc->ev.data.fd = gc->pfd[0];
+
+  return RMW_RET_OK;
+}
+
 rmw_ret_t
 destroy_guard_condition_impl(
   guard_condition_t * gc)
@@ -31,6 +47,13 @@ destroy_guard_condition_impl(
   // close(gc->pfd[1]);
 
   return RMW_RET_OK;
+}
+
+int
+guard_condition_trigger_count(
+  guard_condition_t * gc)
+{
+  return read(gc->pfd[0], dummy, 4096);
 }
 
 // Utility method to copy guard condition and implementation into specified location. Used when
@@ -47,7 +70,7 @@ copy_guard_condition(
 
   dest->implementation_identifier = src->implementation_identifier;
   dest->context = src->context;
-  dest->data = (void*)dest_impl;
+  dest->data = (void *)dest_impl;
   dest_impl->ev = ((guard_condition_t *)src->data)->ev;
   dest_impl->pfd[0] = ((guard_condition_t *)src->data)->pfd[0];
   dest_impl->pfd[1] = ((guard_condition_t *)src->data)->pfd[1];

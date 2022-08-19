@@ -28,10 +28,13 @@ rmw_publisher_event_init(
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(rmw_event, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_INVALID_ARGUMENT);
-  (void) event_type;
+
+  rmw_event->event_type = event_type;
+  rmw_event->implementation_identifier = rmw_get_implementation_identifier;
+  rmw_event->data = publisher;
 
   /// @todo add publisher events support
-  return RMW_RET_UNSUPPORTED;
+  return RMW_RET_OK;
 }
 
 rmw_ret_t
@@ -42,10 +45,13 @@ rmw_subscription_event_init(
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(rmw_event, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscription, RMW_RET_INVALID_ARGUMENT);
-  (void) event_type;
+
+  rmw_event->event_type = event_type;
+  rmw_event->implementation_identifier = rmw_get_implementation_identifier;
+  rmw_event->data = subscription;
 
   /// @todo add subscription events support
-  return RMW_RET_UNSUPPORTED;
+  return RMW_RET_OK;
 }
 #ifdef __cplusplus
 }

@@ -14,6 +14,11 @@
 
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
+#include "rmw/get_node_info_and_types.h"
+#include "rmw/get_service_names_and_types.h"
+#include "rmw/validate_namespace.h"
+#include "rmw/validate_node_name.h"
+
 #include "rmw_hazcat/hazcat_message_queue.h"
 
 #ifdef __cplusplus
@@ -25,15 +30,50 @@ rmw_create_service(
   const rmw_node_t * node,
   const rosidl_service_type_support_t * type_support,
   const char * service_name,
-  const rmw_qos_profile_t * qos_profile)
+  const rmw_qos_profile_t * qos_policies)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_support, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(service_name, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(qos_profile, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(qos_policies, RMW_RET_INVALID_ARGUMENT);
+  if (node->implementation_identifier != rmw_get_implementation_identifier()) {
+    return NULL;
+  }
+  if (!qos_policies->avoid_ros_namespace_conventions) {
+    int validation_result = RMW_TOPIC_VALID;
+    rmw_ret_t ret = rmw_validate_full_topic_name(service_name, &validation_result, NULL);
+    if (RMW_RET_OK != ret) {
+      return NULL;
+    }
+    if (RMW_TOPIC_VALID != validation_result) {
+      const char * reason = rmw_full_topic_name_validation_result_string(validation_result);
+      RMW_SET_ERROR_MSG_WITH_FORMAT_STRING("invalid topic name: %s", reason);
+      return NULL;
+    }
+  }
+  if (qos_policies->history == RMW_QOS_POLICY_HISTORY_UNKNOWN) {
+    RMW_SET_ERROR_MSG("Invalid QoS policy");
+    return NULL;
+  }
 
-  RMW_SET_ERROR_MSG("rmw_create_service hasn't been implemented yet");
-  return NULL;
+  rmw_service_t * srv = rmw_service_allocate();
+  if (srv == NULL) {
+    RMW_SET_ERROR_MSG("Unable to allocate memory for service");
+    return NULL;
+  }
+
+  size_t len = strlen(service_name);
+  srv->implementation_identifier = rmw_get_implementation_identifier();
+  srv->data = rmw_allocate(sizeof(srv_clt_data_t));
+  srv->service_name = rmw_allocate(len);
+
+  if (srv->service_name == NULL) {
+    RMW_SET_ERROR_MSG("Unable to allocate string for subscription's topic name");
+    return NULL;
+  }
+  snprintf(srv->service_name, len + 1, service_name);
+
+  return srv;
 }
 
 rmw_ret_t
@@ -41,9 +81,16 @@ rmw_destroy_service(rmw_node_t * node, rmw_service_t * service)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(service, RMW_RET_INVALID_ARGUMENT);
+  if (node->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
+  if (service->implementation_identifier != rmw_get_implementation_identifier()) {
+    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
+  }
 
-  RMW_SET_ERROR_MSG("rmw_destroy_service hasn't been implemented yet");
-  return RMW_RET_UNSUPPORTED;
+  rmw_service_free(service);
+
+  return RMW_RET_OK;
 }
 
 rmw_ret_t

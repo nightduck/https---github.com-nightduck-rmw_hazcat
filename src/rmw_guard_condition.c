@@ -41,17 +41,9 @@ rmw_create_guard_condition(
   guard->implementation_identifier = rmw_get_implementation_identifier();
   guard->context = context;
 
-  guard_condition_t * gc = rmw_allocate(sizeof(guard_condition_t));
-  if (pipe(gc->pfd) != 0) {
-    rmw_free(gc);
-    rmw_guard_condition_free(guard);
-    RMW_SET_ERROR_MSG("failed to create pipe for guard condition");
-    return NULL;
-  }
-  gc->ev.events = EPOLLIN;
-  gc->ev.data.fd = gc->pfd[0];
-
-  guard->data = gc;
+  guard_condition_t * gc_impl = rmw_allocate(sizeof(guard_condition_t));
+  create_guard_condition_impl(gc_impl);
+  guard->data = gc_impl;
 
   return guard;
 }
@@ -62,7 +54,7 @@ rmw_destroy_guard_condition(
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(guard_condition, RMW_RET_INVALID_ARGUMENT);
 
-  guard_condition_t * gc = (guard_condition_t*)guard_condition->data;
+  guard_condition_t * gc = (guard_condition_t *)guard_condition->data;
 
   destroy_guard_condition_impl(gc);
   rmw_free(guard_condition->data);

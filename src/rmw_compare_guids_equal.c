@@ -25,7 +25,6 @@ rmw_compare_gids_equal(
   const rmw_gid_t * gid2,
   bool * result)
 {
-
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(gid1, RMW_RET_INVALID_ARGUMENT);
   if (gid1->implementation_identifier != rmw_get_implementation_identifier()) {
     RMW_SET_ERROR_MSG("Provided gid does not match expected implementation");

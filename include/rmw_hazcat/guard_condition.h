@@ -35,7 +35,15 @@ extern "C"
 #include "rmw_hazcat/types.h"
 
 rmw_ret_t
+create_guard_condition_impl(
+  guard_condition_t * gc);
+
+rmw_ret_t
 destroy_guard_condition_impl(
+  guard_condition_t * gc);
+
+int
+guard_condition_trigger_count(
   guard_condition_t * gc);
 
 rmw_ret_t

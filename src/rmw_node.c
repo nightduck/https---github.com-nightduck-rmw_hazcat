@@ -78,8 +78,8 @@ rmw_create_node(
     RMW_SET_ERROR_MSG("failed to allocate memory for node handle");
     return NULL;
   }
-  ((construct_node_info__*)node->data)->guard_condition = rmw_create_guard_condition(context);
-  if (((construct_node_info__*)node->data)->guard_condition == NULL) {
+  ((construct_node_info__ *)node->data)->guard_condition = rmw_create_guard_condition(context);
+  if (((construct_node_info__ *)node->data)->guard_condition == NULL) {
     return NULL;
   }
 
@@ -135,7 +135,7 @@ rmw_node_get_graph_guard_condition(const rmw_node_t * node)
 {
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, NULL);
 
-  return ((node_info_t*)node->data)->guard_condition_;
+  return ((node_info_t *)node->data)->guard_condition_;
 }
 
 rmw_ret_t

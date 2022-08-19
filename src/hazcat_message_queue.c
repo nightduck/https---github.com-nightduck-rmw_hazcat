@@ -172,6 +172,7 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
       if ((gc = rmw_create_guard_condition(data->context)) == NULL) {
         return RMW_RET_ERROR;
       }
+      // TODO(nightduck): Make method for in place creation to avoid this memory leak
       copy_guard_condition(&mq->gc, &mq->gc_impl, gc);
     } else {
       mq = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -621,17 +622,18 @@ hazcat_unregister_subscription(rmw_subscription_t * sub)
 }
 
 hma_allocator_t *
-get_matching_alloc(const rmw_subscription_t * sub, const void * msg) {
+get_matching_alloc(const rmw_subscription_t * sub, const void * msg)
+{
   message_queue_t * mq = ((pub_sub_data_t *)sub->data)->mq->elem;
 
   int recent = ((pub_sub_data_t *)sub->data)->next_index;
   if (recent < ((pub_sub_data_t *)sub->data)->depth) {
     recent += mq->len;
   }
-  for(int i = 1; i < ((pub_sub_data_t *)sub->data)->depth; i++) {
+  for (int i = 1; i < ((pub_sub_data_t *)sub->data)->depth; i++) {
     int index = recent - i;
     entry_t * entry = get_entry(mq, ((pub_sub_data_t *)sub->data)->array_num, index);
-    
+
     hma_allocator_t * msg_alloc = hashtable_get(ht, entry->alloc_shmem_id);
     void * entry_msg = GET_PTR(msg_alloc, entry->offset, void);
     if (entry_msg == msg) {

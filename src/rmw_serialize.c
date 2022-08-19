@@ -28,10 +28,10 @@
 #include "rosidl_typesupport_introspection_c/identifier.h"
 #include "rosidl_typesupport_introspection_c/message_introspection.h"
 
-//#include "rmw_hazcat/hashtable.h"
+// #include "rmw_hazcat/hashtable.h"
 
 #define RMW_HAZCAT_TYPESUPPORT_C    rosidl_typesupport_introspection_c__identifier
-//#define RMW_HAZCAT_TYPESUPPORT_CPP  rosidl_typesupport_cpp__typesupport_identifier
+// #define RMW_HAZCAT_TYPESUPPORT_CPP  rosidl_typesupport_cpp__typesupport_identifier
 
 #ifdef __cplusplus
 extern "C"
@@ -48,12 +48,12 @@ serialize(
   assert(members);
   assert(ros_message);
 
-  for(uint32_t i = 0; i < members->member_count_; i++) {
+  for (uint32_t i = 0; i < members->member_count_; i++) {
     const rosidl_typesupport_introspection_c__MessageMember * member = members->members_ + i;
     const char * ros_message_field = (const char *)(ros_message) + member->offset_;
     const rosidl_message_type_support_t * ts;
     const rosidl_typesupport_introspection_c__MessageMembers * sub_members;
-    switch(member->type_id_) {
+    switch (member->type_id_) {
       case rosidl_typesupport_introspection_c__ROS_TYPE_MESSAGE:
         ts = member->members_;
         sub_members = (const rosidl_typesupport_introspection_c__MessageMembers *)ts->data;
@@ -260,7 +260,9 @@ deserialize(
         break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_UINT16:
         if (member->is_array_) {
-          ucdr_deserialize_array_uint16_t(reader, (uint16_t *)ros_message_field, member->array_size_);
+          ucdr_deserialize_array_uint16_t(
+            reader, (uint16_t *)ros_message_field,
+            member->array_size_);
         } else {
           ucdr_deserialize_uint16_t(reader, (uint16_t *)ros_message_field);
         }
@@ -274,7 +276,9 @@ deserialize(
         break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_UINT32:
         if (member->is_array_) {
-          ucdr_deserialize_array_uint32_t(reader, (uint32_t *)ros_message_field, member->array_size_);
+          ucdr_deserialize_array_uint32_t(
+            reader, (uint32_t *)ros_message_field,
+            member->array_size_);
         } else {
           ucdr_deserialize_uint32_t(reader, (uint32_t *)ros_message_field);
         }
@@ -288,7 +292,9 @@ deserialize(
         break;
       case rosidl_typesupport_introspection_c__ROS_TYPE_UINT64:
         if (member->is_array_) {
-          ucdr_deserialize_array_uint64_t(reader, (uint64_t *)ros_message_field, member->array_size_);
+          ucdr_deserialize_array_uint64_t(
+            reader, (uint64_t *)ros_message_field,
+            member->array_size_);
         } else {
           ucdr_deserialize_uint64_t(reader, (uint64_t *)ros_message_field);
         }
@@ -348,7 +354,7 @@ rmw_deserialize(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(ros_message, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_support, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(serialized_message, RMW_RET_INVALID_ARGUMENT);
-  
+
   rosidl_message_type_support_t * ts_c =
     (rosidl_message_type_support_t *)type_support->func(type_support, RMW_HAZCAT_TYPESUPPORT_C);
   if (ts_c == NULL) {
@@ -380,7 +386,7 @@ rmw_get_serialized_message_size(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_support, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(message_bounds, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(size, RMW_RET_INVALID_ARGUMENT);
-  
+
   rosidl_message_type_support_t * ts_c =
     (rosidl_message_type_support_t *)type_support->func(type_support, RMW_HAZCAT_TYPESUPPORT_C);
   if (ts_c == NULL) {

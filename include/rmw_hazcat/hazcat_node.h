@@ -23,12 +23,14 @@ extern "C"
 {
 #endif
 
-typedef struct hazcat_node_info {
+typedef struct hazcat_node_info
+{
   rmw_guard_condition_t * const guard_condition_;   // Triggers whenver ros graph changes
 } node_info_t;
 
 // Bytewise identical with above but with const keywords removed for one time assignment
-typedef struct hazcat_node_info__ {
+typedef struct hazcat_node_info__
+{
   rmw_guard_condition_t * guard_condition;
 } construct_node_info__;
 

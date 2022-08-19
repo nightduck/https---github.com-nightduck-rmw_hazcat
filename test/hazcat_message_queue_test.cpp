@@ -214,8 +214,8 @@ TEST_F(MessageQueueTest, setup) {
   }
 
   init_options = rmw_get_zero_initialized_init_options();
-  ASSERT_EQ(RMW_RET_OK, rmw_init_options_init(&init_options, rcutils_get_default_allocator()))
-    << rcutils_get_error_string().str;
+  ASSERT_EQ(RMW_RET_OK, rmw_init_options_init(&init_options, rcutils_get_default_allocator())) <<
+    rcutils_get_error_string().str;
   init_options.enclave = rcutils_strdup("/", rcutils_get_default_allocator());
   ASSERT_STREQ("/", init_options.enclave);
   context = rmw_get_zero_initialized_context();
@@ -496,7 +496,7 @@ TEST_F(MessageQueueTest, unregister_cuda) {
   rmw_subscription_t * cuda_sub = MessageQueueTest::cuda_sub;
 
   hma_allocator_t * cuda_alloc = reinterpret_cast<hma_allocator_t *>(
-      reinterpret_cast<pub_sub_data_t *>(cuda_pub->data)->alloc);
+    reinterpret_cast<pub_sub_data_t *>(cuda_pub->data)->alloc);
 
   EXPECT_EQ(RMW_RET_OK, rmw_destroy_publisher(node, cuda_pub));
 
@@ -520,7 +520,7 @@ TEST_F(MessageQueueTest, unregister_and_destroy) {
   message_queue_t * mq = mq_node->elem;
 
   hma_allocator_t * cpu_alloc = reinterpret_cast<hma_allocator_t *>(
-      reinterpret_cast<pub_sub_data_t *>(cpu_pub->data)->alloc);
+    reinterpret_cast<pub_sub_data_t *>(cpu_pub->data)->alloc);
 
   EXPECT_EQ(RMW_RET_OK, rmw_destroy_publisher(node, cpu_pub));
 

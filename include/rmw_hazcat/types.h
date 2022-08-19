@@ -39,14 +39,16 @@ extern "C"
 
 #define DOMAINS_PER_TOPIC 32  // NOTE: Changes require editting ref_bits_t and lock_domain too
 
-typedef struct waitset {
+typedef struct waitset
+{
   // TODO(nightduck): alternate structure for non-Linux systems that don't support epoll
   size_t len;
   int epollfd;
   struct epoll_event * evlist;
 } waitset_t;
 
-typedef struct guard_condition {
+typedef struct guard_condition
+{
   // TODO(nightduck): alternate structure for non-Linux systems that don't support epoll
   int pfd[2];
   struct epoll_event ev;
@@ -127,6 +129,11 @@ typedef struct pub_sub_data
   rmw_gid_t gid;            // gid of publisher
   rmw_context_t * context;
 } pub_sub_data_t;
+
+typedef struct srv_clt_data
+{
+  int dummy;
+} srv_clt_data_t;
 
 #ifdef __cplusplus
 }

@@ -135,7 +135,7 @@ rmw_create_subscription(
 
   if (ret = hazcat_register_subscription(sub) != RMW_RET_OK) {
     return NULL;
-  };
+  }
 
   return sub;
 }
@@ -210,14 +210,14 @@ rmw_take(
   }
 
   // TODO(nightduck): Implement per-message size, in case messages are smaller than upper bound
-  size_t size = ((pub_sub_data_t*)subscription->data)->msg_size;
+  size_t size = ((pub_sub_data_t *)subscription->data)->msg_size;
 
   msg_ref_t msg_ref = hazcat_take(subscription);
   if (msg_ref.msg == NULL) {
-    taken = false;
+    *taken = false;
     return RMW_RET_OK;
   } else {
-    taken = true;
+    *taken = true;
   }
 
   memcpy(ros_message, msg_ref.msg, size);
@@ -244,18 +244,18 @@ rmw_take_with_info(
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }
 
-  // TODO: Populate message_info
-  (void*)message_info;
+  // TODO(nightduck): Populate message_info
+  (void *)message_info;
 
   // TODO(nightduck): Implement per-message size, in case messages are smaller than upper bound
-  size_t size = ((pub_sub_data_t*)subscription->data)->msg_size;
+  size_t size = ((pub_sub_data_t *)subscription->data)->msg_size;
 
   msg_ref_t msg_ref = hazcat_take(subscription);
   if (msg_ref.msg == NULL) {
-    taken = false;
+    *taken = false;
     return RMW_RET_OK;
   } else {
-    taken = true;
+    *taken = true;
   }
 
   memcpy(ros_message, msg_ref.msg, size);
@@ -321,9 +321,9 @@ rmw_take_loaned_message(
   msg_ref_t msg_ref = hazcat_take(subscription);
   *loaned_message = msg_ref.msg;
   if (*loaned_message == NULL) {
-    taken = false;
+    *taken = false;
   } else {
-    taken = true;
+    *taken = true;
   }
 
   // TODO(nightduck): Check for errors in hazcat_take
@@ -347,15 +347,15 @@ rmw_take_loaned_message_with_info(
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }
 
-  // TODO: Populate message_info
-  (void*)message_info;
+  // TODO(nightduck): Populate message_info
+  (void *)message_info;
 
   msg_ref_t msg_ref = hazcat_take(subscription);
   *loaned_message = msg_ref.msg;
   if (*loaned_message == NULL) {
-    taken = false;
+    *taken = false;
   } else {
-    taken = true;
+    *taken = true;
   }
 
   // TODO(nightduck): Check for errors in hazcat_take
@@ -431,8 +431,9 @@ rmw_take_sequence(
   *taken = 0;
   bool taken_flag = false;
   rmw_ret_t ret = RMW_RET_OK;
-  for(int i = 0; i < count; i++) {
-    ret = rmw_take_with_info(subscription, message_sequence->data[*taken], &taken_flag,
+  for (int i = 0; i < count; i++) {
+    ret = rmw_take_with_info(
+      subscription, message_sequence->data[*taken], &taken_flag,
       &message_info_sequence->data[*taken], allocation);
     if (ret != RMW_RET_OK) {
       break;

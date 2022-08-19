@@ -75,7 +75,7 @@ rmw_get_subscriber_names_and_types_by_node(
   if (RMW_RET_OK != ret) {
     return ret;
   }
-  (void) no_demangle;\
+  (void) no_demangle; \
 
   RMW_SET_ERROR_MSG("rmw_get_subscriber_names_and_types_by_node hasn't been implemented yet");
   return RMW_RET_UNSUPPORTED;

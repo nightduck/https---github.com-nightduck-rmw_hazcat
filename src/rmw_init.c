@@ -130,7 +130,7 @@ rmw_init(const rmw_init_options_t * options, rmw_context_t * context)
 
   context->instance_id = options->instance_id;
   context->implementation_identifier = rmw_get_implementation_identifier();
-  context->impl = (void*)-1;
+  context->impl = (void *)-1;
   rmw_ret_t ret = rmw_init_options_copy(options, &context->options);
   if (RMW_RET_OK != ret) {
     return ret;

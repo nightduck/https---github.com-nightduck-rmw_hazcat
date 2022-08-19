@@ -160,7 +160,7 @@ rmw_create_publisher(
 
   if (ret = hazcat_register_publisher(pub) != RMW_RET_OK) {
     return NULL;
-  };
+  }
 
   return pub;
 }
@@ -200,9 +200,9 @@ rmw_get_gid_for_publisher(const rmw_publisher_t * publisher, rmw_gid_t * gid)
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }
 
-  *gid = ((pub_sub_data_t*)publisher->data)->gid;
+  *gid = ((pub_sub_data_t *)publisher->data)->gid;
 
-  return RMW_RET_OK;;
+  return RMW_RET_OK;
 }
 
 rmw_ret_t
@@ -268,9 +268,9 @@ rmw_publish(
   }
 
   // TODO(nightduck): Implement per-message size, in case messages are smaller than upper bound
-  size_t size = ((pub_sub_data_t*)publisher->data)->msg_size;
+  size_t size = ((pub_sub_data_t *)publisher->data)->msg_size;
 
-  hma_allocator_t * alloc = ((pub_sub_data_t*)publisher->data)->alloc;
+  hma_allocator_t * alloc = ((pub_sub_data_t *)publisher->data)->alloc;
   int offset = ALLOCATE(alloc, size);
   if (offset < 0) {
     RMW_SET_ERROR_MSG("unable to allocate memory for message");
@@ -323,7 +323,7 @@ rmw_borrow_loaned_message(
     return ret;
   }
 
-  hma_allocator_t * alloc = ((pub_sub_data_t*)publisher->data)->alloc;
+  hma_allocator_t * alloc = ((pub_sub_data_t *)publisher->data)->alloc;
   int offset = ALLOCATE(alloc, size);
   if (offset < 0) {
     RMW_SET_ERROR_MSG("unable to allocate memory for message");
@@ -340,7 +340,7 @@ rmw_return_loaned_message_from_publisher(const rmw_publisher_t * publisher, void
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(loaned_message, RMW_RET_INVALID_ARGUMENT);
 
-  hma_allocator_t * alloc = ((pub_sub_data_t*)publisher->data)->alloc;
+  hma_allocator_t * alloc = ((pub_sub_data_t *)publisher->data)->alloc;
 
   int offset = PTR_TO_OFFSET(alloc, loaned_message);
   DEALLOCATE(alloc, offset);
@@ -357,10 +357,10 @@ rmw_publish_loaned_message(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(ros_message, RMW_RET_INVALID_ARGUMENT);
 
-  hma_allocator_t * alloc = ((pub_sub_data_t*)publisher->data)->alloc;
+  hma_allocator_t * alloc = ((pub_sub_data_t *)publisher->data)->alloc;
 
   // TODO(nightduck): Implement per-message size, in case messages are smaller than upper bound
-  size_t size = ((pub_sub_data_t*)publisher->data)->msg_size;
+  size_t size = ((pub_sub_data_t *)publisher->data)->msg_size;
 
   return hazcat_publish(publisher, ros_message, size);
 }

@@ -25,6 +25,7 @@ find_package(rcutils REQUIRED)
 find_package(rmw REQUIRED)
 find_package(rosidl_runtime_c REQUIRED)
 find_package(rosidl_typesupport_introspection_c REQUIRED)
+find_package(rosidl_typesupport_introspection_cpp REQUIRED)
 find_package(microcdr REQUIRED)
 
 set(CUDA_SEPARABLE_COMPILATION ON)
@@ -66,6 +67,10 @@ set(rmw_hazcat_sources
   src/rmw_wait.c
 )
 
+set(hazcat_typesupport_sources
+  src/hazcat_typesupport.cpp
+)
+
 add_library(hazcat_allocators ${hazcat_allocator_sources})
 target_include_directories(hazcat_allocators PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
@@ -76,7 +81,6 @@ target_include_directories(hazcat_allocators PUBLIC
     rcutils
   )
 
-
 add_library(hazcat_message_queue ${hazcat_message_queue_sources})
 target_include_directories(hazcat_message_queue PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
@@ -84,6 +88,14 @@ target_include_directories(hazcat_message_queue PUBLIC
   ament_target_dependencies(hazcat_message_queue
     rmw
   )
+
+add_library(hazcat_typesupport ${hazcat_typesupport_sources})
+ament_target_dependencies(hazcat_typesupport
+  rcutils
+  rosidl_runtime_c
+  rosidl_typesupport_introspection_c
+  rosidl_typesupport_introspection_cpp
+)
 
 add_library(rmw_hazcat SHARED ${rmw_hazcat_sources})
 ament_target_dependencies(rmw_hazcat
@@ -101,6 +113,7 @@ target_link_libraries(rmw_hazcat
   hazcat_allocators
   hazcat_message_queue
   microcdr
+  hazcat_typesupport
 )
 
 register_rmw_implementation(
@@ -109,7 +122,7 @@ register_rmw_implementation(
 configure_rmw_library(rmw_hazcat)
 
 install(
-  TARGETS hazcat_allocators hazcat_message_queue rmw_hazcat EXPORT rmw_hazcat
+  TARGETS hazcat_allocators hazcat_message_queue rmw_hazcat hazcat_typesupport EXPORT rmw_hazcat
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin)

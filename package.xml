@@ -13,7 +13,6 @@
   <depend>rcpputils</depend>
   <depend>rcutils</depend>
   <depend>rmw</depend>
-  <depend>rmw_implementation</depend>
   <depend>rosidl_runtime_c</depend>
   <depend>rosidl_runtime_cpp</depend>
   <depend>rosidl_typesupport_cpp</depend>
@@ -25,6 +24,8 @@
   <test_depend>ament_lint_common</test_depend>
   <test_depend>test_msgs</test_depend>
   <test_depend>std_msgs</test_depend>
+
+  <member_of_group>rmw_implementation_packages</member_of_group>
 
   <export>
     <build_type>ament_cmake</build_type>

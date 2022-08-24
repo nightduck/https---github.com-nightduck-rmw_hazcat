@@ -22,21 +22,15 @@
 
 #include "rosidl_runtime_c/string_functions.h"
 
-#include "rosidl_typesupport_c/identifier.h"
+#include "rosidl_typesupport_c/message_type_support_dispatch.h"
 
 #include "rosidl_typesupport_introspection_c/field_types.h"
 #include "rosidl_typesupport_introspection_c/identifier.h"
 #include "rosidl_typesupport_introspection_c/message_introspection.h"
 
-// #include "rmw_hazcat/hashtable.h"
-
-#define RMW_HAZCAT_TYPESUPPORT_C    rosidl_typesupport_introspection_c__identifier
-// #define RMW_HAZCAT_TYPESUPPORT_CPP  rosidl_typesupport_cpp__typesupport_identifier
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+rosidl_message_type_support_t *
+get_type_support(
+  const rosidl_message_type_support_t * type_support);
 
 rmw_ret_t
 serialize(
@@ -323,14 +317,14 @@ rmw_serialize(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_support, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(serialized_message, RMW_RET_INVALID_ARGUMENT);
 
-  rosidl_message_type_support_t * ts_c =
-    (rosidl_message_type_support_t *)type_support->func(type_support, RMW_HAZCAT_TYPESUPPORT_C);
-  if (ts_c == NULL) {
-    RMW_SET_ERROR_MSG("rmw_hazcat only supports rosidl_typesupport_introspection_c");
+  rosidl_message_type_support_t * ts = get_type_support(type_support);
+  if (!ts) {
+    RMW_SET_ERROR_MSG("Unsupported typesupport");
     return RMW_RET_INVALID_ARGUMENT;
   }
+
   rosidl_typesupport_introspection_c__MessageMembers * members =
-    (rosidl_typesupport_introspection_c__MessageMembers *)ts_c->data;
+    (rosidl_typesupport_introspection_c__MessageMembers *)ts->data;
   rmw_ret_t ret;
   if ((ret = rmw_serialized_message_resize(serialized_message, members->size_of_)) != RMW_RET_OK) {
     RMW_SET_ERROR_MSG("Cannot resize serialized message");
@@ -355,14 +349,14 @@ rmw_deserialize(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_support, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(serialized_message, RMW_RET_INVALID_ARGUMENT);
 
-  rosidl_message_type_support_t * ts_c =
-    (rosidl_message_type_support_t *)type_support->func(type_support, RMW_HAZCAT_TYPESUPPORT_C);
-  if (ts_c == NULL) {
-    RMW_SET_ERROR_MSG("rmw_hazcat only supports rosidl_typesupport_introspection_c");
+  rosidl_message_type_support_t * ts = get_type_support(type_support);
+  if (!ts) {
+    RMW_SET_ERROR_MSG("Unsupported typesupport");
     return RMW_RET_INVALID_ARGUMENT;
   }
+
   rosidl_typesupport_introspection_c__MessageMembers * members =
-    (rosidl_typesupport_introspection_c__MessageMembers *)ts_c->data;
+    (rosidl_typesupport_introspection_c__MessageMembers *)ts->data;
   rmw_ret_t ret;
   if ((ret = rmw_serialized_message_resize(serialized_message, members->size_of_)) != RMW_RET_OK) {
     RMW_SET_ERROR_MSG("Cannot resize serialized message");
@@ -387,14 +381,14 @@ rmw_get_serialized_message_size(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(message_bounds, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(size, RMW_RET_INVALID_ARGUMENT);
 
-  rosidl_message_type_support_t * ts_c =
-    (rosidl_message_type_support_t *)type_support->func(type_support, RMW_HAZCAT_TYPESUPPORT_C);
-  if (ts_c == NULL) {
-    RMW_SET_ERROR_MSG("rmw_hazcat only supports rosidl_typesupport_introspection_c");
+  rosidl_message_type_support_t * ts = get_type_support(type_support);
+  if (!ts) {
+    RMW_SET_ERROR_MSG("Unsupported typesupport");
     return RMW_RET_INVALID_ARGUMENT;
   }
+
   rosidl_typesupport_introspection_c__MessageMembers * members =
-    (rosidl_typesupport_introspection_c__MessageMembers *)ts_c->data;
+    (rosidl_typesupport_introspection_c__MessageMembers *)ts->data;
   if (members == NULL) {
     RMW_SET_ERROR_MSG("error reading introspection for message");
     return RMW_RET_INVALID_ARGUMENT;

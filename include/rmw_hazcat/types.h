@@ -15,6 +15,7 @@
 #ifdef __linux__
 #include <sys/epoll.h>
 #endif
+#include <signal.h>
 
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
@@ -38,6 +39,11 @@ extern "C"
 
 
 #define DOMAINS_PER_TOPIC 32  // NOTE: Changes require editting ref_bits_t and lock_domain too
+
+#define GC_FD_READ        0
+#define GC_FD_WRITE       1
+
+#define SIGMSG            SIGUSR1
 
 typedef struct waitset
 {
@@ -89,10 +95,6 @@ typedef struct message_queue
 
   // TODO(nightduck): Track sub count for each domain, to do staggered dealloc operations
 
-  // The guard condition to trigger when this queue has a message
-  rmw_guard_condition_t gc;
-  guard_condition_t gc_impl;
-
   // After structure is an array of ref_bits_t objects numbering len
   // Following that there is an array of entry_t objects, one for each domain, each of size len
 } message_queue_t;
@@ -102,7 +104,8 @@ typedef struct message_queue_node
 {
   struct message_queue_node * next;
   const char * file_name;
-  int fd;
+  int fd;                   // fd of the actual topic file
+  int signalfd;             // fd of an empty FIFO used to generate signals for message availability
   struct message_queue * elem;
 } mq_node_t;
 
@@ -128,6 +131,7 @@ typedef struct pub_sub_data
   size_t msg_size;          // Upperbound of message size
   rmw_gid_t gid;            // gid of publisher
   rmw_context_t * context;
+  //int signalfd;             // fd of an empty FIFO used to generate signals for message availability
 } pub_sub_data_t;
 
 typedef struct srv_clt_data

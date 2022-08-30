@@ -20,6 +20,7 @@ extern "C"
 #define _GNU_SOURCE
 
 #include <sys/mman.h>
+#include <sys/signalfd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -33,8 +34,10 @@ extern "C"
 #include "rmw_hazcat/guard_condition.h"
 
 
+char fifo_file[NAME_MAX] = "/tmp/ros2_hazcat";
 char shmem_file[NAME_MAX] = "/ros2_hazcat";
-const int dir_offset = 12;
+const int shm_file_offset = 12;
+const int fifo_file_offset = 16;
 
 mq_node_t mq_list = {NULL, NULL, -1, NULL};
 
@@ -97,12 +100,13 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
   hashtable_insert(ht, data->alloc->shmem_id, data->alloc);
 
   // Add header, and replace all slashes with periods (because no subdirs in /dev/shm)
-  snprintf(shmem_file + dir_offset, NAME_MAX - dir_offset, topic_name);
-  char * current_pos = shmem_file + dir_offset;  // Set to index of first period
+  snprintf(shmem_file + shm_file_offset, NAME_MAX - shm_file_offset, topic_name);
+  char * current_pos = shmem_file + shm_file_offset;  // Set to index of first period
   while (current_pos) {
     *current_pos = '.';
     current_pos = strchr(current_pos, '/');
   }
+  snprintf(fifo_file + fifo_file_offset, NAME_MAX - fifo_file_offset, shmem_file + shm_file_offset);
   message_queue_t * mq;
 
   // Check message queue has been opened in this process yet. If not, do so and map it
@@ -124,10 +128,28 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
     }
 
     // Make it through the list without finding a match, so it hasn't been open here yet
-    int fd = shm_open(shmem_file, O_CREAT | O_RDWR, 0600);
+    int fd = shm_open(shmem_file, O_CREAT | O_RDWR | O_ASYNC, 0600);
     if (fd == -1) {
       RMW_SET_ERROR_MSG("Couldn't open shared message queue");
       printf("Couldn't open shared message queue, %s : %d\n", shmem_file, errno);
+      return RMW_RET_ERROR;
+    }
+
+    // Create accompanying fifo to send signals with
+    int fifo_fd = open(fifo_file, O_RDWR | O_ASYNC);
+    if (fifo_fd == -1 && errno == ENOENT) {
+      if (mkfifo(fifo_file, 0666) != 0) {
+        perror("mkfifo: ");
+        RMW_SET_ERROR_MSG("Couldn't create signaling fifo for topics");
+        printf("Couldn't create signaling fifo for topics, %s : %d\n", fifo_file, errno);
+        return RMW_RET_ERROR;
+      }
+      fifo_fd = open(fifo_file, O_RDWR | O_ASYNC);
+    }
+    if (fifo_fd == -1) {
+      perror("open: ");
+      printf("Couldn't create signaling fifo for topics, %s : %d\n", fifo_file, errno);
+      RMW_SET_ERROR_MSG("Couldn't open signaling fifo for topics");
       return RMW_RET_ERROR;
     }
 
@@ -138,7 +160,7 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
       return RMW_RET_ERROR;
     }
 
-    // Check size of file, it zero, we're the first to create it, so do some initializing
+    // Check size of file, if zero, we're the first to create it, so do some initializing
     struct stat st;
     fstat(fd, &st);
     if (st.st_size == 0) {
@@ -167,13 +189,13 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
       mq->pub_count = 0;  // One of these will be incremented after function returns
       mq->sub_count = 0;
 
-      // Get guard condition and copy it completely within message queue
-      rmw_guard_condition_t * gc;
-      if ((gc = rmw_create_guard_condition(data->context)) == NULL) {
-        return RMW_RET_ERROR;
-      }
-      // TODO(nightduck): Make method for in place creation to avoid this memory leak
-      copy_guard_condition(&mq->gc, &mq->gc_impl, gc);
+      // // Get guard condition and copy it completely within message queue
+      // rmw_guard_condition_t * gc;
+      // if ((gc = rmw_create_guard_condition(data->context)) == NULL) {
+      //   return RMW_RET_ERROR;
+      // }
+      // // TODO(nightduck): Make method for in place creation to avoid this memory leak
+      // copy_guard_condition(&mq->gc, &mq->gc_impl, gc);
     } else {
       mq = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
       if (mq == MAP_FAILED) {
@@ -187,6 +209,7 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
     it->next = mq_list.next;
     it->file_name = file_name;
     it->fd = fd;
+    it->signalfd = fifo_fd;
     it->elem = mq;
     mq_list.next = it;
   } else {
@@ -235,11 +258,32 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
   }
 
   if (needs_resize) {
+    // Store old size
+    struct stat st;
+    if (fstat(it->fd, &st)) {
+      perror("fstat");
+      RMW_SET_ERROR_MSG("Error getting size of message queue");
+    }
+
     // TODO(nightduck): Use history policy more intelligently so page alignment can reccomend depth
+    // Calculate new size
     size_t mq_size = sizeof(message_queue_t) + data->depth * sizeof(ref_bits_t) +
-      data->depth * sizeof(entry_t);
+      data->depth * mq->num_domains * sizeof(entry_t);
+
+    // Remove old copy
+    munmap(mq, st.st_size);
+
+    // Resize
     if (ftruncate(it->fd, mq_size) == -1) {
       RMW_SET_ERROR_MSG("Couldn't resize shared message queue");
+      return RMW_RET_ERROR;
+    }
+
+    // Remap it
+    fstat(it->fd, &st);
+    mq = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, it->fd, 0);
+    if (mq == MAP_FAILED) {
+      RMW_SET_ERROR_MSG("Failed to map shared message queue into process");
       return RMW_RET_ERROR;
     }
   }
@@ -269,6 +313,8 @@ hazcat_register_publisher(rmw_publisher_t * pub)
     RMW_SET_ERROR_MSG("Maximum number of publishers exceeded on shared message queue");
     return RMW_RET_ERROR;
   }
+
+  //((pub_sub_data_t *)pub->data)->signalfd = -1;
 
   // Release lock
   struct flock fl = {F_UNLCK, SEEK_SET, 0, 0, 0};
@@ -300,17 +346,27 @@ hazcat_register_subscription(rmw_subscription_t * sub)
     it->elem->sub_count++;
   } else {
     RMW_SET_ERROR_MSG("Maximum number of publishers exceeded on shared message queue");
-    return RMW_RET_ERROR;
+    ret = RMW_RET_ERROR;
   }
+
+  // sigset_t sigmask;
+  // sigemptyset(&sigmask);
+  // sigaddset(&sigmask, SIGMSG);
+  // ((pub_sub_data_t *)sub->data)->signalfd = signalfd(it->fd, &sigmask, SFD_NONBLOCK);
+  // if (((pub_sub_data_t *)sub->data)->signalfd == -1) {
+  //   perror("signalfd: ");
+  //   RMW_SET_ERROR_MSG("Unable to set signalfd for subscription\n");
+  //   ret = RMW_RET_ERROR;
+  // }
 
   // Release lock
   struct flock fl = {F_UNLCK, SEEK_SET, 0, 0, 0};
   if (fcntl(it->fd, F_SETLK, &fl) == -1) {
     RMW_SET_ERROR_MSG("Couldn't release lock on shared message queue");
-    return RMW_RET_ERROR;
+    ret = RMW_RET_ERROR;
   }
 
-  return RMW_RET_OK;
+  return ret;
 }
 
 rmw_ret_t
@@ -370,12 +426,18 @@ hazcat_publish(const rmw_publisher_t * pub, void * msg, size_t len)
   // Release lock on shared file
   fl.l_type = F_UNLCK;
   if (fcntl(((pub_sub_data_t *)pub->data)->mq->fd, F_SETLK, &fl) == -1) {
+    perror("fcntl");
     RMW_SET_ERROR_MSG("Couldn't release read-lock on shared message queue");
     return RMW_RET_ERROR;
   }
 
   // Signal that data was published
-  return rmw_trigger_guard_condition(&mq->gc);
+  if (fcntl(((pub_sub_data_t *)pub->data)->mq->signalfd, F_SETSIG, SIGMSG) == -1) {
+    perror("fcntl");
+    RMW_SET_ERROR_MSG("Failed to signal message availability");
+    return RMW_RET_ERROR;
+  }
+  return RMW_RET_OK;
 }
 
 // Fetches a message reference from shared message queue.
@@ -539,7 +601,7 @@ hazcat_unregister_publisher(rmw_publisher_t * pub)
     // }
     // front->next = it->next;
 
-    destroy_guard_condition_impl(&mq_list.elem->gc_impl);
+    //destroy_guard_condition_impl(&mq_list.elem->gc_impl);
 
     struct stat st;
     fstat(it->fd, &st);
@@ -597,7 +659,7 @@ hazcat_unregister_subscription(rmw_subscription_t * sub)
 
   // If count is zero, then destroy message queue
   if (it->elem->pub_count == 0 && it->elem->sub_count == 0) {
-    destroy_guard_condition_impl(&mq_list.elem->gc_impl);
+    //destroy_guard_condition_impl(&mq_list.elem->gc_impl);
 
     struct stat st;
     fstat(it->fd, &st);

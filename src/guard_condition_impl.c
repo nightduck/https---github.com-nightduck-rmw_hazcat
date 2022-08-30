@@ -34,7 +34,7 @@ create_guard_condition_impl(
     return RMW_RET_ERROR;
   }
   gc->ev.events = EPOLLIN;
-  gc->ev.data.fd = gc->pfd[0];
+  gc->ev.data.fd = gc->pfd[GC_FD_READ];
 
   return RMW_RET_OK;
 }
@@ -53,7 +53,7 @@ int
 guard_condition_trigger_count(
   guard_condition_t * gc)
 {
-  return read(gc->pfd[0], dummy, 4096);
+  return read(gc->pfd[GC_FD_READ], dummy, 4096);
 }
 
 // Utility method to copy guard condition and implementation into specified location. Used when

@@ -26,7 +26,7 @@ extern "C"
 {
 #endif
 
-// Creates guard condition. data element isn't even pointer, it's just a counter variable
+// Creates guard condition
 rmw_guard_condition_t *
 rmw_create_guard_condition(
   rmw_context_t * context)

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #ifdef __linux__
+#include <signal.h>
 #include <sys/epoll.h>
 #endif
 
@@ -126,8 +127,8 @@ clear_epoll(
     for (int i = 0; i < subscriptions->subscriber_count; i++) {
       RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscriptions->subscribers[0], RMW_RET_ERROR);
       pub_sub_data_t * sub = (pub_sub_data_t *)subscriptions->subscribers[0];
-      guard_condition_t * gc = &(sub->mq->elem->gc_impl);
-      if (epoll_ctl(epollfd, EPOLL_CTL_DEL, gc->pfd[1], &gc->ev) == -1 && errno != ENOENT) {
+      struct epoll_event ev = {.events = EPOLLHUP, .data = sub};
+      if (epoll_ctl(epollfd, EPOLL_CTL_DEL, sub->mq->signalfd, &ev) == -1 && errno != ENOENT) {
         RMW_SET_ERROR_MSG("Unable to remove subscription from epoll");
         perror("epoll_ctl: ");
         return -1;
@@ -149,6 +150,8 @@ clear_epoll(
 }
 #endif
 
+// NOTE: For performance reasons, it is assumed that each call to rmw_wait within a process will
+// contain the same list of entities. They are placed within a epoll instance and not removed
 rmw_ret_t
 rmw_wait(
   rmw_subscriptions_t * subscriptions,
@@ -173,6 +176,11 @@ rmw_wait(
   waitset_t * ws = (waitset_t *)wait_set->data;
   ws->len = 0;
 
+  // NOTE: Each sub stores a signalfd corresponding to the file of its topic's message queue. Each
+  // guard condition is just an unamed pipe. Publishing to a topic will send a signal on the message
+  // queue file, to each subscriber's signalfd. These signalfds (and the guard condition pipes) are
+  // added to epoll/poll, which waits on available input
+
   // Each message queue associated with a topic has an rmw_guard_condition. We collect all of them
   // from each subscription's topic, add them all to a poll/epoll. Similar approach for services
   // and clients. guard_conditions are just added directly. No strategy for events. Waiting on the
@@ -183,10 +191,10 @@ rmw_wait(
       #ifdef __linux__
       RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscriptions->subscribers[0], RMW_RET_ERROR);
       pub_sub_data_t * sub = (pub_sub_data_t *)subscriptions->subscribers[0];
-      guard_condition_t * gc = &(sub->mq->elem->gc_impl);
-      if (epoll_ctl(ws->epollfd, EPOLL_CTL_ADD, gc->pfd[1], &gc->ev) == -1 && errno != EEXIST) {
+      struct epoll_event ev = {.events = EPOLLHUP, .data = sub};
+      if (epoll_ctl(ws->epollfd, EPOLL_CTL_ADD, sub->mq->signalfd, &ev) == -1 && errno != EEXIST) {
+        perror("epoll_ctl: ");
         RMW_SET_ERROR_MSG("Unable to wait on subscription");
-        perror("epoll_wait: ");
         return RMW_RET_ERROR;
       }
       #else
@@ -203,8 +211,8 @@ rmw_wait(
       guard_condition_t * gc = (guard_condition_t *)guard_conditions->guard_conditions[i];
       gc->ev.data.ptr = guard_conditions->guard_conditions[i];
       if (epoll_ctl(ws->epollfd, EPOLL_CTL_ADD, gc->pfd[1], &gc->ev) == -1 && errno != EEXIST) {
+        perror("epoll_ctl: ");
         RMW_SET_ERROR_MSG("Unable to wait on guard condition");
-        perror("epoll_wait: ");
         return RMW_RET_ERROR;
       }
       #else

@@ -245,6 +245,11 @@ TEST_F(MessageQueueTest, creation_and_registration) {
   ASSERT_NE(nullptr, cpu_pub);
   pub_sub_data_t * pub_data = reinterpret_cast<pub_sub_data_t *>(cpu_pub->data);
 
+  struct stat st;
+  fstat(pub_data->mq->fd, &st);
+  EXPECT_GE(st.st_size,
+    sizeof(message_queue_t) + pub_qos.depth * sizeof(ref_bits_t) + pub_qos.depth * sizeof(entry_t));
+
   mq_node = pub_data->mq;
   message_queue_t * mq = mq_node->elem;
   EXPECT_STREQ(mq_node->file_name, "/ros2_hazcat.test");
@@ -260,6 +265,10 @@ TEST_F(MessageQueueTest, creation_and_registration) {
   cpu_sub = rmw_create_subscription(node, type_support, "/test", &sub_qos, &cpu_sub_opts);
   ASSERT_NE(nullptr, cpu_sub);
   pub_sub_data_t * sub_data = reinterpret_cast<pub_sub_data_t *>(cpu_sub->data);
+
+  fstat(sub_data->mq->fd, &st);
+  EXPECT_GE(st.st_size,
+    sizeof(message_queue_t) + pub_qos.depth * sizeof(ref_bits_t) + pub_qos.depth * sizeof(entry_t));
 
   EXPECT_EQ(mq, sub_data->mq->elem);    // Should use same message queue
   EXPECT_EQ(mq_node, sub_data->mq);
@@ -349,6 +358,12 @@ TEST_F(MessageQueueTest, multi_domain_registration) {
   cuda_sub = rmw_create_subscription(node, type_support, "/test", &sub_qos, &cuda_sub_opts);
   ASSERT_NE(nullptr, cuda_sub);
   pub_sub_data_t * cuda_sub_data = reinterpret_cast<pub_sub_data_t *>(cuda_sub->data);
+
+  struct stat st;
+  fstat(cuda_sub_data->mq->fd, &st);
+  EXPECT_GE(st.st_size,
+    sizeof(message_queue_t) + sub_qos.depth * sizeof(ref_bits_t) + 2 * sub_qos.depth * sizeof(entry_t));
+
   EXPECT_EQ(mq_node, cuda_sub_data->mq);
   EXPECT_EQ(mq, cuda_sub_data->mq->elem);
   EXPECT_EQ(mq->index, 2);
@@ -362,6 +377,11 @@ TEST_F(MessageQueueTest, multi_domain_registration) {
   cuda_pub = rmw_create_publisher(node, type_support, "/test", &pub_qos, &cuda_pub_opts);
   ASSERT_NE(nullptr, cuda_pub);
   pub_sub_data_t * pub_data = reinterpret_cast<pub_sub_data_t *>(cuda_pub->data);
+
+  fstat(pub_data->mq->fd, &st);
+  EXPECT_GE(st.st_size,
+    sizeof(message_queue_t) + sub_qos.depth * sizeof(ref_bits_t) + 2 * sub_qos.depth * sizeof(entry_t));
+
   EXPECT_EQ(mq_node, pub_data->mq);
   EXPECT_EQ(mq, pub_data->mq->elem);
   EXPECT_EQ(mq->index, 2);
@@ -375,6 +395,11 @@ TEST_F(MessageQueueTest, multi_domain_registration) {
   cpu_sub2 = rmw_create_subscription(node, type_support, "/test", &sub_qos, &cpu_sub_opts);
   ASSERT_NE(nullptr, cpu_sub2);
   pub_sub_data_t * cpu_sub_data = reinterpret_cast<pub_sub_data_t *>(cpu_sub2->data);
+
+  fstat(pub_data->mq->fd, &st);
+  EXPECT_GE(st.st_size,
+    sizeof(message_queue_t) + sub_qos.depth * sizeof(ref_bits_t) + 2 * sub_qos.depth * sizeof(entry_t));
+
   EXPECT_EQ(mq, cpu_sub_data->mq->elem);    // Should use same message queue
   EXPECT_EQ(mq_node, cpu_sub_data->mq);
   EXPECT_EQ(mq->index, 2);

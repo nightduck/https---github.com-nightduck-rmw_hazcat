@@ -134,13 +134,13 @@ rmw_create_publisher(
     // TODO(nightduck): Replace hard coded values when serialization works
     //                  Remove all together when TLSF allocator is done
     data->alloc =
-      create_cpu_ringbuf_allocator(msg_size, (qos_policies->depth == 0) ? 10 : qos_policies->depth);
+      create_cpu_ringbuf_allocator(msg_size, qos_policies->depth);
     if (data->alloc == NULL) {
       RMW_SET_ERROR_MSG("Unable to create allocator for publisher");
       return NULL;
     }
   }
-  data->depth = qos_policies->depth;
+  data->depth = (qos_policies->depth > 1) ? qos_policies->depth : 1;
   data->msg_size = msg_size;
   data->gid = generate_gid();
   data->context = node->context;

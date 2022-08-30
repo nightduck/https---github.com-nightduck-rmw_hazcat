@@ -22,9 +22,11 @@ extern "C"
 
 cpu_ringbuf_allocator_t * create_cpu_ringbuf_allocator(size_t item_size, size_t ring_size)
 {
+  size_t alloc_size =
+    sizeof(cpu_ringbuf_allocator_t) + (item_size + sizeof(atomic_int)) * ring_size;
+  alloc_size += (SHARED_GRANULARITY - alloc_size) % SHARED_GRANULARITY;
   cpu_ringbuf_allocator_t * alloc = (cpu_ringbuf_allocator_t *)create_shared_allocator(
-    NULL, sizeof(cpu_ringbuf_allocator_t) + (item_size + sizeof(atomic_int)) * ring_size,
-    0, LOCAL_GRANULARITY, ALLOC_RING, CPU, 0);
+    NULL, alloc_size, 0, LOCAL_GRANULARITY, ALLOC_RING, CPU, 0);
 
   if (alloc == NULL) {
     return NULL;
@@ -33,7 +35,7 @@ cpu_ringbuf_allocator_t * create_cpu_ringbuf_allocator(size_t item_size, size_t 
   alloc->count = 0;
   alloc->rear_it = 0;
   alloc->item_size = item_size;
-  alloc->ring_size = ring_size;
+  alloc->ring_size = (alloc_size - sizeof(cpu_ringbuf_allocator_t)) / item_size;
 
   return alloc;
 }

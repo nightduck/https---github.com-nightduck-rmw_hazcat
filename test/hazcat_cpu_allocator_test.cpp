@@ -39,7 +39,7 @@ TEST(AllocatorTest, struct_ordering_test) {
 
 TEST(AllocatorTest, cpu_ringbuf_creation_test)
 {
-  struct cpu_ringbuf_allocator * alloc = create_cpu_ringbuf_allocator(6, 30);
+  struct cpu_ringbuf_allocator * alloc = create_cpu_ringbuf_allocator(128, 30);
 
   int id = alloc->shmem_id;
   EXPECT_EQ(alloc->strategy, ALLOC_RING);
@@ -47,8 +47,9 @@ TEST(AllocatorTest, cpu_ringbuf_creation_test)
   EXPECT_EQ(alloc->device_number, 0);
   EXPECT_EQ(alloc->count, 0);
   EXPECT_EQ(alloc->rear_it, 0);
-  EXPECT_EQ(alloc->item_size, 6);
-  EXPECT_EQ(alloc->ring_size, 30);
+  EXPECT_EQ(alloc->item_size, 128);
+  size_t ring_size = (SHARED_GRANULARITY - sizeof(cpu_ringbuf_allocator_t)) / 128;
+  EXPECT_EQ(alloc->ring_size, ring_size);  // This won't work if page size not 4096 bytes
 
   unmap_shared_allocator((struct hma_allocator *)alloc);
 
@@ -58,7 +59,8 @@ TEST(AllocatorTest, cpu_ringbuf_creation_test)
 
 TEST(AllocatorTest, cpu_ringbuf_allocate_rw_test)
 {
-  struct cpu_ringbuf_allocator * alloc = create_cpu_ringbuf_allocator(8, 3);
+  size_t item_size = SHARED_GRANULARITY / 4;
+  struct cpu_ringbuf_allocator * alloc = create_cpu_ringbuf_allocator(item_size, 3);
 
   // Make 4 allocations even though there's only room for 3
   int a1 = ALLOCATE(alloc, 0);
@@ -68,11 +70,11 @@ TEST(AllocatorTest, cpu_ringbuf_allocate_rw_test)
   int a2 = ALLOCATE(alloc, 0);
   EXPECT_EQ(alloc->count, 2);
   EXPECT_EQ(alloc->rear_it, 0);
-  EXPECT_EQ(a2 - a1, 8 + sizeof(int));
+  EXPECT_EQ(a2 - a1, item_size + sizeof(int));
   int a3 = ALLOCATE(alloc, 0);
   EXPECT_EQ(alloc->count, 3);
   EXPECT_EQ(alloc->rear_it, 0);
-  EXPECT_EQ(a3 - a1, 16 + 2 * sizeof(int));
+  EXPECT_EQ(a3 - a1, 2 * (item_size + sizeof(int)));
   int a4 = ALLOCATE(alloc, 0);
   EXPECT_EQ(alloc->count, 3);
   EXPECT_EQ(alloc->rear_it, 0);
@@ -118,7 +120,8 @@ TEST(AllocatorTest, cpu_ringbuf_allocate_rw_test)
 
 TEST(AllocatorTest, cpu_ringbuf_share_deallocate_test)
 {
-  struct cpu_ringbuf_allocator * alloc = create_cpu_ringbuf_allocator(8, 3);
+  size_t item_size = SHARED_GRANULARITY / 4;
+  struct cpu_ringbuf_allocator * alloc = create_cpu_ringbuf_allocator(item_size, 3);
 
   // Make 3 allocations
   int a1 = ALLOCATE(alloc, 0);
@@ -198,7 +201,8 @@ TEST(AllocatorTest, cpu_ringbuf_share_deallocate_test)
 
 TEST(AllocatorTest, cpu_ringbuf_remap_test)
 {
-  struct cpu_ringbuf_allocator * alloc = create_cpu_ringbuf_allocator(8, 3);
+  size_t item_size = SHARED_GRANULARITY / 4;
+  struct cpu_ringbuf_allocator * alloc = create_cpu_ringbuf_allocator(item_size, 3);
 
   // Make 3 allocations
   int a1 = ALLOCATE(alloc, 0);

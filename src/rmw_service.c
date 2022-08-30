@@ -32,10 +32,10 @@ rmw_create_service(
   const char * service_name,
   const rmw_qos_profile_t * qos_policies)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_support, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service_name, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(qos_policies, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, NULL);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_support, NULL);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service_name, NULL);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(qos_policies, NULL);
   if (node->implementation_identifier != rmw_get_implementation_identifier()) {
     return NULL;
   }
@@ -53,6 +53,14 @@ rmw_create_service(
   }
   if (qos_policies->history == RMW_QOS_POLICY_HISTORY_UNKNOWN) {
     RMW_SET_ERROR_MSG("Invalid QoS policy");
+    return NULL;
+  }
+
+  rmw_ret_t ret;
+  size_t msg_size;
+  rosidl_runtime_c__Sequence__bound dummy;
+  if (ret = rmw_get_serialized_message_size(type_support, &dummy, &msg_size) != RMW_RET_OK) {
+    RMW_SET_ERROR_MSG("Unable to get serialized message size");
     return NULL;
   }
 
@@ -88,6 +96,8 @@ rmw_destroy_service(rmw_node_t * node, rmw_service_t * service)
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }
 
+  rmw_free(service->data);
+  rmw_free(service->service_name);
   rmw_service_free(service);
 
   return RMW_RET_OK;

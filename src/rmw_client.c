@@ -56,7 +56,7 @@ rmw_create_client(
     return NULL;
   }
 
-  rmw_client_t * clt = rmw_service_allocate();
+  rmw_client_t * clt = rmw_client_allocate();
   if (clt == NULL) {
     RMW_SET_ERROR_MSG("Unable to allocate memory for service");
     return NULL;
@@ -88,6 +88,8 @@ rmw_destroy_client(rmw_node_t * node, rmw_client_t * client)
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }
 
+  rmw_free(client->data);
+  rmw_free(client->service_name);
   rmw_client_free(client);
 
   return RMW_RET_OK;

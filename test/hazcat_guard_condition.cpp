@@ -112,7 +112,7 @@ TEST_F(TestGuardCondition, signal_test) {
 
   EXPECT_FALSE(check);
 
-  rmw_destroy_guard_condition(gc1);
-  rmw_destroy_guard_condition(gc2);
+  EXPECT_EQ(RMW_RET_OK, rmw_destroy_guard_condition(gc1));
+  EXPECT_EQ(RMW_RET_OK, rmw_destroy_guard_condition(gc2));
   t.join();
 }

@@ -38,7 +38,7 @@ rmw_compare_gids_equal(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(result, RMW_RET_INVALID_ARGUMENT);
   *result = false;
 
-  if (memcmp(gid1->data, gid2->data, RMW_GID_STORAGE_SIZE) == 0) {
+  if (0 == memcmp(gid1->data, gid2->data, RMW_GID_STORAGE_SIZE)) {
     *result = true;
   }
   return RMW_RET_OK;

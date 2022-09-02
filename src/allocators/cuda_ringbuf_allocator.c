@@ -27,7 +27,7 @@ extern "C"
 static inline void
 checkDrvError(CUresult res, const char * tok, const char * file, unsigned line)
 {
-  if (res != CUDA_SUCCESS) {
+  if (CUDA_SUCCESS != res) {
     const char * errStr = NULL;
     (void)cuGetErrorString(res, &errStr);
     printf("%s:%d %sfailed (%d): %s\n", file, line, tok, (unsigned)res, errStr);
@@ -254,14 +254,14 @@ struct hma_allocator * cuda_ringbuf_remap(struct hma_allocator * temp)
   void * local = mmap(
     mapping, LOCAL_GRANULARITY,
     PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-  if (local == MAP_FAILED) {
+  if (MAP_FAILED == local) {
     printf("cuda_ringbuf_remap failed on creation of local portion\n");
     handle_error("mmap");
   }
 
   // Map in shared portion of allocator
   void * shared_mapping = shmat(temp->shmem_id, mapping + LOCAL_GRANULARITY, SHM_REMAP);
-  if (shared_mapping == MAP_FAILED) {
+  if (MAP_FAILED == shared_mapping) {
     printf("cuda_ringbuf_remap failed on creation of shared portion\n");
     handle_error("shmat");
   }

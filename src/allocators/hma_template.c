@@ -76,7 +76,7 @@ void * reserve_memory_for_allocator(size_t shared_size, size_t dev_size, size_t 
   void * rough_allocation = mmap(
     NULL, local_size + shared_size + dev_size + alignment_factor,
     PROT_NONE, MAP_ANON | MAP_PRIVATE, -1, 0);
-  if (rough_allocation == MAP_FAILED) {
+  if (MAP_FAILED == rough_allocation) {
     printf("reserve_memory_for_allocator couldn't reserve memroy\n");
     return NULL;
   }
@@ -114,9 +114,9 @@ struct hma_allocator * create_shared_allocator(
     (alloc_size - sizeof(fps_t)) % SHARED_GRANULARITY;
   size_t dev_size = pool_size + (dev_granularity - pool_size) % dev_granularity;
 
-  if (hint == NULL) {
+  if (NULL == hint) {
     hint = reserve_memory_for_allocator(shared_size, dev_size, dev_granularity);
-    if (hint == NULL) {
+    if (NULL == hint) {
       return NULL;
     }
   } else {
@@ -134,14 +134,14 @@ struct hma_allocator * create_shared_allocator(
   void * local_mapping = mmap(
     hint, LOCAL_GRANULARITY, PROT_READ | PROT_WRITE,
     MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-  if (local_mapping == MAP_FAILED) {
+  if (MAP_FAILED == local_mapping) {
     printf("failed to create local portion\n");
     handle_error("mmap");
   }
 
   // Create shared memory block (requested size )
   int id = shmget(IPC_PRIVATE, shared_size, 0640);
-  if (id == -1) {
+  if (-1 == id) {
     // TODO(nightduck): More robust error checking
     return NULL;
   }
@@ -149,7 +149,7 @@ struct hma_allocator * create_shared_allocator(
   // printf("Allocator id: %d\n", id);
 
   // Construct shared portion of allocator
-  if (shmat(id, (uint8_t *)hint + LOCAL_GRANULARITY, SHM_REMAP) == MAP_FAILED) {
+  if (MAP_FAILED == shmat(id, (uint8_t *)hint + LOCAL_GRANULARITY, SHM_REMAP)) {
     printf("create_shared_allocator failed on creation of shared portion\n");
     handle_error("shmat");
   }
@@ -177,7 +177,7 @@ struct hma_allocator * remap_shared_allocator(int shmem_id)
 {
   // Temporarily map in shared allocator to read it's alloc_type
   void * shared_portion = shmat(shmem_id, NULL, 0);
-  if (shared_portion == MAP_FAILED) {
+  if (MAP_FAILED == shared_portion) {
     printf("remap_shared_allocator failed on creation of shared portion\n");
     handle_error("shmat");
   }

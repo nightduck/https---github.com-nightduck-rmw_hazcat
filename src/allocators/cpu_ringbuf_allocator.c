@@ -28,7 +28,7 @@ cpu_ringbuf_allocator_t * create_cpu_ringbuf_allocator(size_t item_size, size_t 
   cpu_ringbuf_allocator_t * alloc = (cpu_ringbuf_allocator_t *)create_shared_allocator(
     NULL, alloc_size, 0, LOCAL_GRANULARITY, ALLOC_RING, CPU, 0);
 
-  if (alloc == NULL) {
+  if (NULL == alloc) {
     return NULL;
   }
 
@@ -72,7 +72,7 @@ void cpu_ringbuf_share(void * self, int offset)
 void cpu_ringbuf_deallocate(void * self, int offset)
 {
   cpu_ringbuf_allocator_t * s = (cpu_ringbuf_allocator_t *)self;
-  if (s->count == 0) {
+  if (0 == s->count) {
     return;       // Allocator empty, nothing to deallocate
   }
 
@@ -118,7 +118,7 @@ struct hma_allocator * cpu_ringbuf_remap(struct hma_allocator * temp)
 
   // Reserve a memory range for local and shared portions (no device pool needed)
   void * mapping = reserve_memory_for_allocator(buf.shm_segsz, 0, LOCAL_GRANULARITY);
-  if (mapping == MAP_FAILED) {
+  if (MAP_FAILED == mapping) {
     return NULL;
   }
 
@@ -133,7 +133,7 @@ struct hma_allocator * cpu_ringbuf_remap(struct hma_allocator * temp)
 
   // Map in shared portion of allocator
   void * shared = shmat(temp->shmem_id, mapping + LOCAL_GRANULARITY, SHM_REMAP);
-  if (shared == MAP_FAILED) {
+  if (MAP_FAILED == shared) {
     printf("cpu_ringbuf_remap failed on creation of shared portion\n");
     handle_error("shmat");
   }

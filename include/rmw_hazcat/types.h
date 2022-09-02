@@ -131,7 +131,7 @@ typedef struct pub_sub_data
   size_t msg_size;          // Upperbound of message size
   rmw_gid_t gid;            // gid of publisher
   rmw_context_t * context;
-  //int signalfd;             // fd of an empty FIFO used to generate signals for message availability
+  // int signalfd;          // fd of an empty FIFO used to generate signals for message availability
 } pub_sub_data_t;
 
 typedef struct srv_clt_data

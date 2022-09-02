@@ -82,7 +82,7 @@ rmw_create_subscription(
       return NULL;
     }
   }
-  if (qos_policies->history == RMW_QOS_POLICY_HISTORY_UNKNOWN) {
+  if (RMW_QOS_POLICY_HISTORY_UNKNOWN == qos_policies->history) {
     RMW_SET_ERROR_MSG("Invalid QoS policy");
     return NULL;
   }
@@ -90,28 +90,28 @@ rmw_create_subscription(
   rmw_ret_t ret;
   size_t msg_size;
   rosidl_runtime_c__Sequence__bound dummy;
-  if (ret = rmw_get_serialized_message_size(type_supports, &dummy, &msg_size) != RMW_RET_OK) {
+  if (RMW_RET_OK != (ret = rmw_get_serialized_message_size(type_supports, &dummy, &msg_size))) {
     RMW_SET_ERROR_MSG("Unable to get serialized message size");
     return NULL;
   }
 
   rmw_subscription_t * sub = rmw_subscription_allocate();
-  if (sub == NULL) {
+  if (NULL == sub) {
     RMW_SET_ERROR_MSG("Unable to allocate memory for subscription");
     return NULL;
   }
   pub_sub_data_t * data = rmw_allocate(sizeof(pub_sub_data_t));
-  if (data == NULL) {
+  if (NULL == data) {
     RMW_SET_ERROR_MSG("Unable to allocate memory for subscription info");
     return NULL;
   }
 
   // Populate data->alloc with allocator specified and data->history with qos setting
   data->alloc = (hma_allocator_t *)subscription_options->rmw_specific_subscription_payload;
-  if (data->alloc == NULL) {
+  if (NULL == data->alloc) {
     // TODO(nightduck): Remove when TLSF allocator is done
     data->alloc = create_cpu_ringbuf_allocator(msg_size, qos_policies->depth);
-    if (data->alloc == NULL) {
+    if (NULL == data->alloc) {
       RMW_SET_ERROR_MSG("Unable to create allocator for subscription");
       return NULL;
     }
@@ -126,13 +126,13 @@ rmw_create_subscription(
   sub->options = *subscription_options;
   sub->can_loan_messages = true;
 
-  if (sub->topic_name == NULL) {
+  if (NULL == sub->topic_name) {
     RMW_SET_ERROR_MSG("Unable to allocate string for subscription's topic name");
     return NULL;
   }
   snprintf(sub->topic_name, strlen(topic_name) + 1, topic_name);
 
-  if (ret = hazcat_register_subscription(sub) != RMW_RET_OK) {
+  if (RMW_RET_OK != (ret = hazcat_register_subscription(sub))) {
     return NULL;
   }
 
@@ -155,7 +155,7 @@ rmw_destroy_subscription(
 
   // Remove publisher from it's message queue
   rmw_ret_t ret = hazcat_unregister_subscription(subscription);
-  if (ret != RMW_RET_OK) {
+  if (RMW_RET_OK != ret) {
     return ret;
   }
 
@@ -212,7 +212,7 @@ rmw_take(
   size_t size = ((pub_sub_data_t *)subscription->data)->msg_size;
 
   msg_ref_t msg_ref = hazcat_take(subscription);
-  if (msg_ref.msg == NULL) {
+  if (NULL == msg_ref.msg) {
     *taken = false;
     return RMW_RET_OK;
   } else {
@@ -250,7 +250,7 @@ rmw_take_with_info(
   size_t size = ((pub_sub_data_t *)subscription->data)->msg_size;
 
   msg_ref_t msg_ref = hazcat_take(subscription);
-  if (msg_ref.msg == NULL) {
+  if (NULL == msg_ref.msg) {
     *taken = false;
     return RMW_RET_OK;
   } else {
@@ -319,7 +319,7 @@ rmw_take_loaned_message(
 
   msg_ref_t msg_ref = hazcat_take(subscription);
   *loaned_message = msg_ref.msg;
-  if (*loaned_message == NULL) {
+  if (NULL == *loaned_message) {
     *taken = false;
   } else {
     *taken = true;
@@ -351,7 +351,7 @@ rmw_take_loaned_message_with_info(
 
   msg_ref_t msg_ref = hazcat_take(subscription);
   *loaned_message = msg_ref.msg;
-  if (*loaned_message == NULL) {
+  if (NULL == *loaned_message) {
     *taken = false;
   } else {
     *taken = true;
@@ -374,7 +374,7 @@ rmw_return_loaned_message_from_subscription(
 
   // This is a work-around since this rmw discards the allocator reference after hazcat_take
   hma_allocator_t * alloc = get_matching_alloc(subscription, loaned_message);
-  if (alloc == NULL) {
+  if (NULL == alloc) {
     RMW_SET_ERROR_MSG("Returning message that wasn't loaned");
     return RMW_RET_ERROR;
   }
@@ -434,7 +434,7 @@ rmw_take_sequence(
     ret = rmw_take_with_info(
       subscription, message_sequence->data[*taken], &taken_flag,
       &message_info_sequence->data[*taken], allocation);
-    if (ret != RMW_RET_OK) {
+    if (RMW_RET_OK != ret) {
       break;
     }
     if (taken_flag) {

@@ -29,7 +29,7 @@ rmw_ret_t
 create_guard_condition_impl(
   guard_condition_t * gc)
 {
-  if (pipe(gc->pfd) != 0) {
+  if (0 != pipe(gc->pfd)) {
     RMW_SET_ERROR_MSG("failed to create pipe for guard condition");
     return RMW_RET_ERROR;
   }

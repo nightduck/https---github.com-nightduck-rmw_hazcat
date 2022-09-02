@@ -48,7 +48,7 @@ TEST(AllocatorTest, cpu_ringbuf_creation_test)
   EXPECT_EQ(alloc->count, 0);
   EXPECT_EQ(alloc->rear_it, 0);
   EXPECT_EQ(alloc->item_size, 128);
-  size_t ring_size = (SHARED_GRANULARITY - sizeof(cpu_ringbuf_allocator_t)) / 128;
+  int ring_size = (SHARED_GRANULARITY - sizeof(cpu_ringbuf_allocator_t)) / 128;
   EXPECT_EQ(alloc->ring_size, ring_size);  // This won't work if page size not 4096 bytes
 
   unmap_shared_allocator((struct hma_allocator *)alloc);

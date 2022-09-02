@@ -20,7 +20,9 @@ extern "C"
 {
 #endif
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 #include <assert.h>
 #include <errno.h>

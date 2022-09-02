@@ -150,7 +150,7 @@ rmw_shutdown(rmw_context_t * context)
   if (context->implementation_identifier != rmw_get_implementation_identifier()) {
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }
-  if (context->impl == NULL) {
+  if (NULL == context->impl) {
     return RMW_RET_OK;
   }
 
@@ -170,7 +170,7 @@ rmw_context_fini(rmw_context_t * context)
   if (context->implementation_identifier != rmw_get_implementation_identifier()) {
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }
-  if (context->impl != NULL) {
+  if (NULL != context->impl) {
     RCUTILS_SET_ERROR_MSG("context has not been shutdown");
     return RMW_RET_INVALID_ARGUMENT;
   }

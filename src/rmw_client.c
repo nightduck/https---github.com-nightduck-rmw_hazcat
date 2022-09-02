@@ -32,10 +32,10 @@ rmw_create_client(
   const char * service_name,
   const rmw_qos_profile_t * qos_policies)
 {
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_support, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service_name, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(qos_policies, RMW_RET_INVALID_ARGUMENT);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(node, NULL);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_support, NULL);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(service_name, NULL);
+  RCUTILS_CHECK_ARGUMENT_FOR_NULL(qos_policies, NULL);
   if (node->implementation_identifier != rmw_get_implementation_identifier()) {
     return NULL;
   }
@@ -51,27 +51,26 @@ rmw_create_client(
       return NULL;
     }
   }
-  if (qos_policies->history == RMW_QOS_POLICY_HISTORY_UNKNOWN) {
+  if (RMW_QOS_POLICY_HISTORY_UNKNOWN == qos_policies->history) {
     RMW_SET_ERROR_MSG("Invalid QoS policy");
     return NULL;
   }
 
   rmw_client_t * clt = rmw_client_allocate();
-  if (clt == NULL) {
+  if (NULL == clt) {
     RMW_SET_ERROR_MSG("Unable to allocate memory for service");
     return NULL;
   }
 
-  size_t len = strlen(service_name);
   clt->implementation_identifier = rmw_get_implementation_identifier();
   clt->data = rmw_allocate(sizeof(srv_clt_data_t));
-  clt->service_name = rmw_allocate(len);
+  clt->service_name = rmw_allocate(strlen(service_name) + 1);
 
-  if (clt->service_name == NULL) {
+  if (NULL == clt->service_name) {
     RMW_SET_ERROR_MSG("Unable to allocate string for subscription's topic name");
     return NULL;
   }
-  snprintf(clt->service_name, len + 1, service_name);
+  snprintf(clt->service_name, strlen(service_name) + 1, service_name);
 
   return clt;
 }

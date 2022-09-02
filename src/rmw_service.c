@@ -51,7 +51,7 @@ rmw_create_service(
       return NULL;
     }
   }
-  if (qos_policies->history == RMW_QOS_POLICY_HISTORY_UNKNOWN) {
+  if (RMW_QOS_POLICY_HISTORY_UNKNOWN == qos_policies->history) {
     RMW_SET_ERROR_MSG("Invalid QoS policy");
     return NULL;
   }
@@ -65,7 +65,7 @@ rmw_create_service(
   // }
 
   rmw_service_t * srv = rmw_service_allocate();
-  if (srv == NULL) {
+  if (NULL == srv) {
     RMW_SET_ERROR_MSG("Unable to allocate memory for service");
     return NULL;
   }
@@ -75,7 +75,7 @@ rmw_create_service(
   srv->data = rmw_allocate(sizeof(srv_clt_data_t));
   srv->service_name = rmw_allocate(strlen(service_name) + 1);
 
-  if (srv->service_name == NULL) {
+  if (NULL == srv->service_name) {
     RMW_SET_ERROR_MSG("Unable to allocate string for subscription's topic name");
     return NULL;
   }

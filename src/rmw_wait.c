@@ -86,27 +86,27 @@ set_all_null(
   rmw_clients_t * clients,
   rmw_events_t * events)
 {
-  if (subscriptions != NULL) {
+  if (NULL != subscriptions) {
     for (int i = 0; i < subscriptions->subscriber_count; i++) {
       subscriptions->subscribers[i] = NULL;
     }
   }
-  if (guard_conditions != NULL) {
+  if (NULL != guard_conditions) {
     for (int i = 0; i < guard_conditions->guard_condition_count; i++) {
       guard_conditions->guard_conditions[i] = NULL;
     }
   }
-  if (services != NULL) {
+  if (NULL != services) {
     for (int i = 0; i < services->service_count; i++) {
       services->services[i] = NULL;
     }
   }
-  if (clients != NULL) {
+  if (NULL != clients) {
     for (int i = 0; i < clients->client_count; i++) {
       clients->clients[i] = NULL;
     }
   }
-  if (events != NULL) {
+  if (NULL != events) {
     for (int i = 0; i < events->event_count; i++) {
       events->events[i] = NULL;
     }
@@ -123,7 +123,7 @@ clear_epoll(
   rmw_events_t * events,
   int epollfd)
 {
-  if (subscriptions != NULL) {
+  if (NULL != subscriptions) {
     for (int i = 0; i < subscriptions->subscriber_count; i++) {
       RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscriptions->subscribers[0], RMW_RET_ERROR);
       pub_sub_data_t * sub = (pub_sub_data_t *)subscriptions->subscribers[0];
@@ -136,7 +136,7 @@ clear_epoll(
     }
   }
 
-  if (guard_conditions != NULL) {
+  if (NULL != guard_conditions) {
     for (int i = 0; i < guard_conditions->guard_condition_count; i++) {
       RCUTILS_CHECK_ARGUMENT_FOR_NULL(guard_conditions->guard_conditions[0], RMW_RET_ERROR);
       guard_condition_t * gc = (guard_condition_t *)guard_conditions->guard_conditions[i];
@@ -185,7 +185,7 @@ rmw_wait(
   // and clients. guard_conditions are just added directly. No strategy for events. Waiting on the
   // poll/epoll will reveal which topics or guards are ready
 
-  if (subscriptions != NULL) {
+  if (NULL != subscriptions) {
     for (int i = 0; i < subscriptions->subscriber_count; i++) {
       #ifdef __linux__
       RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscriptions->subscribers[0], RMW_RET_ERROR);
@@ -203,7 +203,7 @@ rmw_wait(
     }
   }
 
-  if (guard_conditions != NULL) {
+  if (NULL != guard_conditions) {
     for (int i = 0; i < guard_conditions->guard_condition_count; i++) {
       #ifdef __linux__
       RCUTILS_CHECK_ARGUMENT_FOR_NULL(guard_conditions->guard_conditions[0], RMW_RET_ERROR);
@@ -263,7 +263,7 @@ rmw_wait(
   // We don't interpret the event list from polling, we only use it to signal SOMETHING is ready,
   // manually check everything to see if it is
 
-  if (subscriptions != NULL) {
+  if (NULL != subscriptions) {
     for (int i = 0; i < subscriptions->subscriber_count; i++) {
       // if next index and my index equal, set pointer to null, because no message available
       pub_sub_data_t * sub = subscriptions->subscribers[i];
@@ -273,7 +273,7 @@ rmw_wait(
       }
     }
   }
-  if (guard_conditions != NULL) {
+  if (NULL != guard_conditions) {
     for (int i = 0; i < guard_conditions->guard_condition_count; i++) {
       // attempt to read from pipe, if unsuccessful, set to null
       guard_condition_t * gc = guard_conditions->guard_conditions[i];

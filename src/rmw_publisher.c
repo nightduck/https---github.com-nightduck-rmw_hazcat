@@ -96,7 +96,7 @@ rmw_create_publisher(
       return NULL;
     }
   }
-  if (qos_policies->history == RMW_QOS_POLICY_HISTORY_UNKNOWN) {
+  if (RMW_QOS_POLICY_HISTORY_UNKNOWN == qos_policies->history) {
     RMW_SET_ERROR_MSG("Invalid QoS policy");
     return NULL;
   }
@@ -112,30 +112,30 @@ rmw_create_publisher(
   rmw_ret_t ret;
   size_t msg_size;
   rosidl_runtime_c__Sequence__bound dummy;
-  if ((ret = rmw_get_serialized_message_size(type_supports, &dummy, &msg_size)) != RMW_RET_OK) {
+  if (RMW_RET_OK != (ret = rmw_get_serialized_message_size(type_supports, &dummy, &msg_size))) {
     RMW_SET_ERROR_MSG("Unable to get serialized message size");
     return NULL;
   }
 
   rmw_publisher_t * pub = rmw_publisher_allocate();
-  if (pub == NULL) {
+  if (NULL == pub) {
     RMW_SET_ERROR_MSG("Unable to allocate memory for publisher");
     return NULL;
   }
   pub_sub_data_t * data = rmw_allocate(sizeof(pub_sub_data_t));
-  if (data == NULL) {
+  if (NULL == data) {
     RMW_SET_ERROR_MSG("Unable to allocate memory for publisher info");
     return NULL;
   }
 
   // Populate data->alloc with allocator specified (all other fields are set during registration)
   data->alloc = (hma_allocator_t *)publisher_options->rmw_specific_publisher_payload;
-  if (data->alloc == NULL) {
+  if (NULL == data->alloc) {
     // TODO(nightduck): Replace hard coded values when serialization works
     //                  Remove all together when TLSF allocator is done
     data->alloc =
       create_cpu_ringbuf_allocator(msg_size, qos_policies->depth);
-    if (data->alloc == NULL) {
+    if (NULL == data->alloc) {
       RMW_SET_ERROR_MSG("Unable to create allocator for publisher");
       return NULL;
     }
@@ -151,13 +151,13 @@ rmw_create_publisher(
   pub->options = *publisher_options;
   pub->can_loan_messages = true;
 
-  if (pub->topic_name == NULL) {
+  if (NULL == pub->topic_name) {
     RMW_SET_ERROR_MSG("Unable to allocate string for publisher's topic name");
     return NULL;
   }
   snprintf(pub->topic_name, strlen(topic_name) + 1, topic_name);
 
-  if (ret = hazcat_register_publisher(pub) != RMW_RET_OK) {
+  if (RMW_RET_OK != (ret = hazcat_register_publisher(pub))) {
     return NULL;
   }
 
@@ -178,7 +178,7 @@ rmw_destroy_publisher(rmw_node_t * node, rmw_publisher_t * publisher)
 
   // Remove publisher from it's message queue
   rmw_ret_t ret = hazcat_unregister_publisher(publisher);
-  if (ret != RMW_RET_OK) {
+  if (RMW_RET_OK != ret) {
     return ret;
   }
 
@@ -309,7 +309,7 @@ rmw_borrow_loaned_message(
   if (publisher->implementation_identifier != rmw_get_implementation_identifier()) {
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }
-  if (*ros_message != NULL) {
+  if (NULL != *ros_message) {
     RMW_SET_ERROR_MSG("Non-null message given to rmw_borrow_loaned_message");
     return RMW_RET_INVALID_ARGUMENT;
   }
@@ -317,7 +317,7 @@ rmw_borrow_loaned_message(
   rmw_ret_t ret;
   size_t size;
   rosidl_runtime_c__Sequence__bound dummy;
-  if ((ret = rmw_get_serialized_message_size(type_support, &dummy, &size)) != RMW_RET_OK) {
+  if (RMW_RET_OK != (ret = rmw_get_serialized_message_size(type_support, &dummy, &size))) {
     RMW_SET_ERROR_MSG("Unable to get length of message");
     return ret;
   }

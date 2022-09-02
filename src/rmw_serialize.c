@@ -28,7 +28,7 @@
 #include "rosidl_typesupport_introspection_c/identifier.h"
 #include "rosidl_typesupport_introspection_c/message_introspection.h"
 
-rosidl_message_type_support_t *
+const rosidl_message_type_support_t *
 get_type_support(
   const rosidl_message_type_support_t * type_support);
 
@@ -317,7 +317,7 @@ rmw_serialize(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_support, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(serialized_message, RMW_RET_INVALID_ARGUMENT);
 
-  rosidl_message_type_support_t * ts = get_type_support(type_support);
+  const rosidl_message_type_support_t * ts = get_type_support(type_support);
   if (!ts) {
     RMW_SET_ERROR_MSG("Unsupported typesupport");
     return RMW_RET_INVALID_ARGUMENT;
@@ -326,7 +326,7 @@ rmw_serialize(
   rosidl_typesupport_introspection_c__MessageMembers * members =
     (rosidl_typesupport_introspection_c__MessageMembers *)ts->data;
   rmw_ret_t ret;
-  if ((ret = rmw_serialized_message_resize(serialized_message, members->size_of_)) != RMW_RET_OK) {
+  if (RMW_RET_OK != (ret = rmw_serialized_message_resize(serialized_message, members->size_of_))) {
     RMW_SET_ERROR_MSG("Cannot resize serialized message");
     return ret;
   }
@@ -349,7 +349,7 @@ rmw_deserialize(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(type_support, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(serialized_message, RMW_RET_INVALID_ARGUMENT);
 
-  rosidl_message_type_support_t * ts = get_type_support(type_support);
+  const rosidl_message_type_support_t * ts = get_type_support(type_support);
   if (!ts) {
     RMW_SET_ERROR_MSG("Unsupported typesupport");
     return RMW_RET_INVALID_ARGUMENT;
@@ -358,7 +358,7 @@ rmw_deserialize(
   rosidl_typesupport_introspection_c__MessageMembers * members =
     (rosidl_typesupport_introspection_c__MessageMembers *)ts->data;
   rmw_ret_t ret;
-  if ((ret = rmw_serialized_message_resize(serialized_message, members->size_of_)) != RMW_RET_OK) {
+  if (RMW_RET_OK != (ret = rmw_serialized_message_resize(serialized_message, members->size_of_))) {
     RMW_SET_ERROR_MSG("Cannot resize serialized message");
     return ret;
   }
@@ -381,7 +381,7 @@ rmw_get_serialized_message_size(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(message_bounds, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(size, RMW_RET_INVALID_ARGUMENT);
 
-  rosidl_message_type_support_t * ts = get_type_support(type_support);
+  const rosidl_message_type_support_t * ts = get_type_support(type_support);
   if (!ts) {
     RMW_SET_ERROR_MSG("Unsupported typesupport");
     return RMW_RET_INVALID_ARGUMENT;
@@ -389,7 +389,7 @@ rmw_get_serialized_message_size(
 
   rosidl_typesupport_introspection_c__MessageMembers * members =
     (rosidl_typesupport_introspection_c__MessageMembers *)ts->data;
-  if (members == NULL) {
+  if (NULL == members) {
     RMW_SET_ERROR_MSG("error reading introspection for message");
     return RMW_RET_INVALID_ARGUMENT;
   }

@@ -102,7 +102,7 @@ TEST(AllocatorTest, cuda_ringbuf_allocate_rw_test)
   int a1 = ALLOCATE(alloc, 0);
   EXPECT_EQ(alloc->count, 1);
   EXPECT_EQ(alloc->rear_it, 0);
-  EXPECT_EQ(a1, SHARED_GRANULARITY + sizeof(fps_t));
+  EXPECT_EQ(a1, (int)(SHARED_GRANULARITY + sizeof(fps_t)));
   int a2 = ALLOCATE(alloc, 0);
   EXPECT_EQ(alloc->count, 2);
   EXPECT_EQ(alloc->rear_it, 0);

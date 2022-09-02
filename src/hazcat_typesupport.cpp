@@ -31,24 +31,27 @@
 #define RMW_HAZCAT_TYPESUPPORT_CPP  rosidl_typesupport_introspection_cpp::typesupport_identifier
 
 extern "C"
-rosidl_message_type_support_t *
+const rosidl_message_type_support_t *
 get_type_support(
   const rosidl_message_type_support_t * type_support);
 
-rosidl_message_type_support_t *
+const rosidl_message_type_support_t *
 get_type_support(
   const rosidl_message_type_support_t * type_support)
 {
-  rosidl_message_type_support_t * ts;
-  ts = (rosidl_message_type_support_t *)type_support->func(type_support, RMW_HAZCAT_TYPESUPPORT_C);
-  if (ts) {
-    return ts;
+  const rosidl_message_type_support_t * ts_c =
+    reinterpret_cast<const rosidl_message_type_support_t *>(
+    type_support->func(type_support, RMW_HAZCAT_TYPESUPPORT_C));
+  if (ts_c) {
+    return ts_c;
   }
-  ts = (rosidl_message_type_support_t *)type_support->func(type_support, RMW_HAZCAT_TYPESUPPORT_CPP);
-  if (ts) {
-    return ts;
+  const rosidl_message_type_support_t * ts_cpp =
+    reinterpret_cast<const rosidl_message_type_support_t *>(
+    type_support->func(type_support, RMW_HAZCAT_TYPESUPPORT_CPP));
+  if (ts_cpp) {
+    return ts_cpp;
   }
-  
+
   RMW_SET_ERROR_MSG("Unsupported typesupport");
   return nullptr;
 }

@@ -92,7 +92,7 @@ void hashtable_insert(hashtable_t * ht, int key, void * val)
 
     // Find a new spot for the old guy to go
     node_t * squater = head->next;
-    while (squater->val != NULL) {                   // Now find a free index to link to
+    while (NULL != squater->val) {                   // Now find a free index to link to
       squater++;
       squater = ht->table + (squater - ht->table) % ht->len;  // Wrap around
     }
@@ -111,7 +111,7 @@ void hashtable_insert(hashtable_t * ht, int key, void * val)
     return;
   }
 
-  while (it->next != NULL && it->key != key) {  // This bucket is occupied, traverse down the list
+  while (NULL != it->next && it->key != key) {  // This bucket is occupied, traverse down the list
     it = it->next;
   }
 
@@ -124,7 +124,7 @@ void hashtable_insert(hashtable_t * ht, int key, void * val)
   // At this point, it is either at it's initial value, which is unoccupied, or at the end of a
   // linked list, which is occupied. Assume the latter and iterate over array for empty spot
   node_t * tail = it;
-  while (it->val != NULL) {                   // Now find a free index to link to
+  while (NULL != it->val) {                   // Now find a free index to link to
     it++;
     it = ht->table + (it - ht->table) % ht->len;  // Wrap around
   }
@@ -140,7 +140,7 @@ void hashtable_insert(hashtable_t * ht, int key, void * val)
 void * hashtable_get(hashtable_t * ht, int key)
 {
   node_t * it = &(ht->table[HASH(key, ht->len)]);
-  while (it != NULL && it->key != key) {
+  while (NULL != it && it->key != key) {
     it = it->next;
   }
   return (it == NULL) ? it : it->val;    // Return either a match or a null pointer
@@ -164,10 +164,10 @@ void hashtable_remove(hashtable_t * ht, int key)
     second->val = NULL;
   } else {
     // Otherwise iterate through the list
-    while (front->next != NULL && front->next->key != key) {
+    while (NULL != front->next && front->next->key != key) {
       front = front->next;
     }
-    if (front->next != NULL && front->next->key == key) {   // If we've reached an element that
+    if (NULL != front->next && front->next->key == key) {   // If we've reached an element that
       node_t * removing = front->next;                      // matches the key
       front->next = removing->next;
       removing->next = NULL;

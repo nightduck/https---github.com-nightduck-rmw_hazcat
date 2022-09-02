@@ -34,7 +34,7 @@ rmw_create_guard_condition(
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(context, NULL);
 
   rmw_guard_condition_t * guard = rmw_guard_condition_allocate();
-  if (guard == NULL) {
+  if (NULL == guard) {
     RMW_SET_ERROR_MSG("failed to allocate memory for guard condition");
     return NULL;
   }

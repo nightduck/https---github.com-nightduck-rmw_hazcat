@@ -236,7 +236,8 @@ TEST_F(MessageQueueTest, creation_and_registration) {
   ASSERT_EQ(RMW_RET_OK, rmw_get_serialized_message_size(type_support, &dummy, &msg_size));
   cpu_alloc = create_cpu_ringbuf_allocator(msg_size, 10);
   rmw_publisher_options_t cpu_pub_opts = {.rmw_specific_publisher_payload = cpu_alloc};
-  rmw_subscription_options_t cpu_sub_opts = {.rmw_specific_subscription_payload = cpu_alloc};
+  rmw_subscription_options_t cpu_sub_opts = {.rmw_specific_subscription_payload = cpu_alloc,
+    .ignore_local_publications = false};
 
   pub_qos.depth = 5;
   sub_qos.depth = 1;
@@ -247,7 +248,8 @@ TEST_F(MessageQueueTest, creation_and_registration) {
 
   struct stat st;
   fstat(pub_data->mq->fd, &st);
-  EXPECT_GE(st.st_size,
+  EXPECT_GE(
+    st.st_size,
     sizeof(message_queue_t) + pub_qos.depth * sizeof(ref_bits_t) + pub_qos.depth * sizeof(entry_t));
 
   mq_node = pub_data->mq;
@@ -267,7 +269,8 @@ TEST_F(MessageQueueTest, creation_and_registration) {
   pub_sub_data_t * sub_data = reinterpret_cast<pub_sub_data_t *>(cpu_sub->data);
 
   fstat(sub_data->mq->fd, &st);
-  EXPECT_GE(st.st_size,
+  EXPECT_GE(
+    st.st_size,
     sizeof(message_queue_t) + pub_qos.depth * sizeof(ref_bits_t) + pub_qos.depth * sizeof(entry_t));
 
   EXPECT_EQ(mq, sub_data->mq->elem);    // Should use same message queue
@@ -348,8 +351,10 @@ TEST_F(MessageQueueTest, multi_domain_registration) {
   rosidl_runtime_c__Sequence__bound dummy;
   ASSERT_EQ(RMW_RET_OK, rmw_get_serialized_message_size(type_support, &dummy, &msg_size));
   cuda_alloc = create_cuda_ringbuf_allocator(msg_size, 10);
-  rmw_subscription_options_t cpu_sub_opts = {.rmw_specific_subscription_payload = cpu_alloc};
-  rmw_subscription_options_t cuda_sub_opts = {.rmw_specific_subscription_payload = cuda_alloc};
+  rmw_subscription_options_t cpu_sub_opts = {.rmw_specific_subscription_payload = cpu_alloc,
+    .ignore_local_publications = false};
+  rmw_subscription_options_t cuda_sub_opts = {.rmw_specific_subscription_payload = cuda_alloc,
+    .ignore_local_publications = false};
   rmw_publisher_options_t cuda_pub_opts = {.rmw_specific_publisher_payload = cuda_alloc};
 
   message_queue_t * mq = mq_node->elem;
@@ -361,8 +366,10 @@ TEST_F(MessageQueueTest, multi_domain_registration) {
 
   struct stat st;
   fstat(cuda_sub_data->mq->fd, &st);
-  EXPECT_GE(st.st_size,
-    sizeof(message_queue_t) + sub_qos.depth * sizeof(ref_bits_t) + 2 * sub_qos.depth * sizeof(entry_t));
+  EXPECT_GE(
+    st.st_size,
+    sizeof(message_queue_t) + sub_qos.depth * sizeof(ref_bits_t) +
+    2 * sub_qos.depth * sizeof(entry_t));
 
   EXPECT_EQ(mq_node, cuda_sub_data->mq);
   EXPECT_EQ(mq, cuda_sub_data->mq->elem);
@@ -379,8 +386,10 @@ TEST_F(MessageQueueTest, multi_domain_registration) {
   pub_sub_data_t * pub_data = reinterpret_cast<pub_sub_data_t *>(cuda_pub->data);
 
   fstat(pub_data->mq->fd, &st);
-  EXPECT_GE(st.st_size,
-    sizeof(message_queue_t) + sub_qos.depth * sizeof(ref_bits_t) + 2 * sub_qos.depth * sizeof(entry_t));
+  EXPECT_GE(
+    st.st_size,
+    sizeof(message_queue_t) + sub_qos.depth * sizeof(ref_bits_t) +
+    2 * sub_qos.depth * sizeof(entry_t));
 
   EXPECT_EQ(mq_node, pub_data->mq);
   EXPECT_EQ(mq, pub_data->mq->elem);
@@ -397,8 +406,10 @@ TEST_F(MessageQueueTest, multi_domain_registration) {
   pub_sub_data_t * cpu_sub_data = reinterpret_cast<pub_sub_data_t *>(cpu_sub2->data);
 
   fstat(pub_data->mq->fd, &st);
-  EXPECT_GE(st.st_size,
-    sizeof(message_queue_t) + sub_qos.depth * sizeof(ref_bits_t) + 2 * sub_qos.depth * sizeof(entry_t));
+  EXPECT_GE(
+    st.st_size,
+    sizeof(message_queue_t) + sub_qos.depth * sizeof(ref_bits_t) +
+    2 * sub_qos.depth * sizeof(entry_t));
 
   EXPECT_EQ(mq, cpu_sub_data->mq->elem);    // Should use same message queue
   EXPECT_EQ(mq_node, cpu_sub_data->mq);

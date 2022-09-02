@@ -40,7 +40,7 @@ rmw_create_node(
   if (context->implementation_identifier != rmw_get_implementation_identifier()) {
     return NULL;
   }
-  if (context->impl == NULL) {
+  if (NULL == context->impl) {
     RCUTILS_SET_ERROR_MSG("context has been shutdown");
     return NULL;
   }
@@ -74,17 +74,17 @@ rmw_create_node(
   node->implementation_identifier = rmw_get_implementation_identifier();
 
   node->data = rmw_allocate(sizeof(node_info_t));
-  if (node->data == NULL) {
+  if (NULL == node->data) {
     RMW_SET_ERROR_MSG("failed to allocate memory for node handle");
     return NULL;
   }
   ((construct_node_info__ *)node->data)->guard_condition = rmw_create_guard_condition(context);
-  if (((construct_node_info__ *)node->data)->guard_condition == NULL) {
+  if (NULL == ((construct_node_info__ *)node->data)->guard_condition) {
     return NULL;
   }
 
   node->name = rmw_allocate(strlen(name) + 1);
-  if (node->name == NULL) {
+  if (NULL == node->name) {
     RMW_SET_ERROR_MSG("failed to allocate memory for node name string");
     rmw_free(node);
     return NULL;

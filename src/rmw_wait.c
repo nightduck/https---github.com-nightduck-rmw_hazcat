@@ -168,7 +168,6 @@ rmw_wait(
   // RCUTILS_CHECK_ARGUMENT_FOR_NULL(clients, RMW_RET_INVALID_ARGUMENT);
   // RCUTILS_CHECK_ARGUMENT_FOR_NULL(events, RMW_RET_INVALID_ARGUMENT);
   RCUTILS_CHECK_ARGUMENT_FOR_NULL(wait_set, RMW_RET_INVALID_ARGUMENT);
-  RCUTILS_CHECK_ARGUMENT_FOR_NULL(wait_timeout, RMW_RET_INVALID_ARGUMENT);
   if (wait_set->implementation_identifier != rmw_get_implementation_identifier()) {
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }

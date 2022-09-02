@@ -120,10 +120,9 @@ rmw_create_subscription(
   data->msg_size = msg_size;
   data->context = node->context;
 
-  size_t len = strlen(topic_name);
   sub->implementation_identifier = rmw_get_implementation_identifier();
   sub->data = data;
-  sub->topic_name = rmw_allocate(len);
+  sub->topic_name = rmw_allocate(strlen(topic_name) + 1);
   sub->options = *subscription_options;
   sub->can_loan_messages = true;
 
@@ -131,7 +130,7 @@ rmw_create_subscription(
     RMW_SET_ERROR_MSG("Unable to allocate string for subscription's topic name");
     return NULL;
   }
-  snprintf(sub->topic_name, len + 1, topic_name);
+  snprintf(sub->topic_name, strlen(topic_name) + 1, topic_name);
 
   if (ret = hazcat_register_subscription(sub) != RMW_RET_OK) {
     return NULL;

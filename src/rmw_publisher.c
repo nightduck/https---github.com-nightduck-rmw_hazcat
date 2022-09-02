@@ -145,10 +145,9 @@ rmw_create_publisher(
   data->gid = generate_gid();
   data->context = node->context;
 
-  size_t len = strlen(topic_name);
   pub->implementation_identifier = rmw_get_implementation_identifier();
   pub->data = data;
-  pub->topic_name = rmw_allocate(len);
+  pub->topic_name = rmw_allocate(strlen(topic_name) + 1);
   pub->options = *publisher_options;
   pub->can_loan_messages = true;
 
@@ -156,7 +155,7 @@ rmw_create_publisher(
     RMW_SET_ERROR_MSG("Unable to allocate string for publisher's topic name");
     return NULL;
   }
-  snprintf(pub->topic_name, len + 1, topic_name);
+  snprintf(pub->topic_name, strlen(topic_name) + 1, topic_name);
 
   if (ret = hazcat_register_publisher(pub) != RMW_RET_OK) {
     return NULL;

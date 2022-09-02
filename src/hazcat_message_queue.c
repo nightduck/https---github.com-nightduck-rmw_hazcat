@@ -116,7 +116,7 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
   }
   if (it == NULL) {
     // Allocate some memory for mq_list insertion below. If unable to, fail before shm operations
-    char * file_name = rmw_allocate(strlen(shmem_file));
+    char * file_name = rmw_allocate(strlen(shmem_file) + 1);
     if (file_name == NULL) {
       RMW_SET_ERROR_MSG("Failed to allocate string for filename");
       return RMW_RET_ERROR;
@@ -314,7 +314,7 @@ hazcat_register_publisher(rmw_publisher_t * pub)
     return RMW_RET_ERROR;
   }
 
-  //((pub_sub_data_t *)pub->data)->signalfd = -1;
+  // ((pub_sub_data_t *)pub->data)->signalfd = -1;
 
   // Release lock
   struct flock fl = {F_UNLCK, SEEK_SET, 0, 0, 0};
@@ -601,7 +601,7 @@ hazcat_unregister_publisher(rmw_publisher_t * pub)
     // }
     // front->next = it->next;
 
-    //destroy_guard_condition_impl(&mq_list.elem->gc_impl);
+    // destroy_guard_condition_impl(&mq_list.elem->gc_impl);
 
     struct stat st;
     fstat(it->fd, &st);
@@ -659,7 +659,7 @@ hazcat_unregister_subscription(rmw_subscription_t * sub)
 
   // If count is zero, then destroy message queue
   if (it->elem->pub_count == 0 && it->elem->sub_count == 0) {
-    //destroy_guard_condition_impl(&mq_list.elem->gc_impl);
+    // destroy_guard_condition_impl(&mq_list.elem->gc_impl);
 
     struct stat st;
     fstat(it->fd, &st);

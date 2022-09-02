@@ -56,13 +56,13 @@ rmw_create_service(
     return NULL;
   }
 
-  rmw_ret_t ret;
-  size_t msg_size;
-  rosidl_runtime_c__Sequence__bound dummy;
-  if (ret = rmw_get_serialized_message_size(type_support, &dummy, &msg_size) != RMW_RET_OK) {
-    RMW_SET_ERROR_MSG("Unable to get serialized message size");
-    return NULL;
-  }
+  // rmw_ret_t ret;
+  // size_t msg_size;
+  // rosidl_runtime_c__Sequence__bound dummy;
+  // if (ret = rmw_get_serialized_message_size(type_support, &dummy, &msg_size) != RMW_RET_OK) {
+  //   RMW_SET_ERROR_MSG("Unable to get serialized message size");
+  //   return NULL;
+  // }
 
   rmw_service_t * srv = rmw_service_allocate();
   if (srv == NULL) {
@@ -73,13 +73,13 @@ rmw_create_service(
   size_t len = strlen(service_name);
   srv->implementation_identifier = rmw_get_implementation_identifier();
   srv->data = rmw_allocate(sizeof(srv_clt_data_t));
-  srv->service_name = rmw_allocate(len);
+  srv->service_name = rmw_allocate(strlen(service_name) + 1);
 
   if (srv->service_name == NULL) {
     RMW_SET_ERROR_MSG("Unable to allocate string for subscription's topic name");
     return NULL;
   }
-  snprintf(srv->service_name, len + 1, service_name);
+  snprintf(srv->service_name, strlen(service_name) + 1, service_name);
 
   return srv;
 }

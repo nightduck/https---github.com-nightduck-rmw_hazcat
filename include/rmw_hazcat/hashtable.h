@@ -46,6 +46,7 @@ hashtable_t * hashtable_init(size_t len)
   for (size_t i = 0; i < len; i++) {
     table->table[i].next = NULL;
     table->table[i].val = NULL;
+    table->table[i].key = 0;
   }
   return table;
 }

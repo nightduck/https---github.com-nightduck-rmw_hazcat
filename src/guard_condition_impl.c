@@ -29,7 +29,7 @@ rmw_ret_t
 create_guard_condition_impl(
   guard_condition_t * gc)
 {
-  if (0 != pipe(gc->pfd)) {
+  if (0 != pipe2(gc->pfd, O_NONBLOCK)) {
     RMW_SET_ERROR_MSG("failed to create pipe for guard condition");
     return RMW_RET_ERROR;
   }
@@ -43,8 +43,8 @@ rmw_ret_t
 destroy_guard_condition_impl(
   guard_condition_t * gc)
 {
-  // close(gc->pfd[0]);
-  // close(gc->pfd[1]);
+  // close(gc->pfd[GC_FD_READ]);
+  // close(gc->pfd[GC_FD_WRITE]);
 
   return RMW_RET_OK;
 }
@@ -53,7 +53,15 @@ int
 guard_condition_trigger_count(
   guard_condition_t * gc)
 {
-  return read(gc->pfd[GC_FD_READ], dummy, 4096);
+  int ret = read(gc->pfd[GC_FD_READ], dummy, 4096);
+  if (-1 == ret && EAGAIN != errno) {
+    perror("read");
+    return 0;
+  } else if (-1 == ret && EAGAIN == errno) {
+    return 0;
+  } else {
+    return ret;
+  }
 }
 
 // Utility method to copy guard condition and implementation into specified location. Used when

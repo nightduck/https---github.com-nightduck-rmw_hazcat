@@ -37,7 +37,7 @@ rmw_create_wait_set(rmw_context_t * context, size_t max_conditions)
     RMW_SET_ERROR_MSG("Unable to allocate memory for waitset implementation");
     return NULL;
   }
-  ws->evlist = (struct epoll_event *)ws + 1;
+  ws->evlist = (struct epoll_event *)(ws + 1);
   ws->epollfd = epoll_create(max_conditions);
   // ws->num_subs = 0;
   // ws->num_gcs = 0;
@@ -188,10 +188,10 @@ rmw_wait(
   if (NULL != subscriptions) {
     for (int i = 0; i < subscriptions->subscriber_count; i++) {
       #ifdef __linux__
-      RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscriptions->subscribers[0], RMW_RET_ERROR);
-      pub_sub_data_t * sub = (pub_sub_data_t *)subscriptions->subscribers[0];
-      struct epoll_event ev = {.events = EPOLLHUP, .data = sub};
-      if (epoll_ctl(ws->epollfd, EPOLL_CTL_ADD, sub->mq->signalfd, &ev) == -1 && errno != EEXIST) {
+      RCUTILS_CHECK_ARGUMENT_FOR_NULL(subscriptions->subscribers[i], RMW_RET_ERROR);
+      pub_sub_data_t * sub = (pub_sub_data_t *)subscriptions->subscribers[i];
+      struct epoll_event ev = {.events = EPOLLIN, .data = sub->mq->signalfd};
+      if (-1 == epoll_ctl(ws->epollfd, EPOLL_CTL_ADD, sub->mq->signalfd, &ev) && EEXIST != errno) {
         perror("epoll_ctl: ");
         RMW_SET_ERROR_MSG("Unable to wait on subscription");
         return RMW_RET_ERROR;
@@ -206,10 +206,10 @@ rmw_wait(
   if (NULL != guard_conditions) {
     for (int i = 0; i < guard_conditions->guard_condition_count; i++) {
       #ifdef __linux__
-      RCUTILS_CHECK_ARGUMENT_FOR_NULL(guard_conditions->guard_conditions[0], RMW_RET_ERROR);
+      RCUTILS_CHECK_ARGUMENT_FOR_NULL(guard_conditions->guard_conditions[i], RMW_RET_ERROR);
       guard_condition_t * gc = (guard_condition_t *)guard_conditions->guard_conditions[i];
       gc->ev.data.ptr = guard_conditions->guard_conditions[i];
-      if (epoll_ctl(ws->epollfd, EPOLL_CTL_ADD, gc->pfd[1], &gc->ev) == -1 && errno != EEXIST) {
+      if (-1 == epoll_ctl(ws->epollfd, EPOLL_CTL_ADD, gc->pfd[1], &gc->ev) && EEXIST != errno) {
         perror("epoll_ctl: ");
         RMW_SET_ERROR_MSG("Unable to wait on guard condition");
         return RMW_RET_ERROR;
@@ -260,13 +260,19 @@ rmw_wait(
   // TODO(nightduck): Use poll instead
   #endif
 
+  // See if this can clear signal fifos
+  char buffer[4096];
+  for (int i = 0; i < ready; i++) {
+    read(ws->evlist[i].data.fd, buffer, ws->evlist[i].events);
+  }
+
   // We don't interpret the event list from polling, we only use it to signal SOMETHING is ready,
   // manually check everything to see if it is
 
   if (NULL != subscriptions) {
     for (int i = 0; i < subscriptions->subscriber_count; i++) {
       // if next index and my index equal, set pointer to null, because no message available
-      pub_sub_data_t * sub = subscriptions->subscribers[i];
+      pub_sub_data_t * sub = (pub_sub_data_t *)subscriptions->subscribers[i];
       message_queue_t * mq = sub->mq->elem;
       if (sub->next_index == mq->index) {
         subscriptions->subscribers[i] = NULL;

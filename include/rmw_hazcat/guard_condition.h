@@ -26,6 +26,8 @@ extern "C"
 #else
 # include <stdatomic.h>
 #endif
+#include <fcntl.h>
+#include <unistd.h>
 
 #include <stdint.h>
 #include "rmw/allocators.h"

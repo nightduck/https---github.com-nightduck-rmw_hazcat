@@ -92,6 +92,17 @@ inline entry_t * get_entry(message_queue_t * mq, int domain, int i)
          domain * mq->len * sizeof(entry_t) + i * sizeof(entry_t));
 }
 
+hma_allocator_t * lookup_allocator(int shmem_id)
+{
+  hma_allocator_t * alloc = hashtable_get(ht, shmem_id);
+  if (NULL == alloc) {
+    // Doesn't exist in this process yet, map it in
+    alloc = remap_shared_allocator(shmem_id);
+    hashtable_insert(ht, shmem_id, alloc);
+    return alloc;
+  }
+}
+
 // Convenient utility method since 95% of registering subscription is same as registering publisher
 rmw_ret_t
 hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
@@ -162,7 +173,11 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
 
     // Check size of file, if zero, we're the first to create it, so do some initializing
     struct stat st;
-    fstat(fd, &st);
+    if (fstat(it->fd, &st)) {
+      perror("fstat");
+      RMW_SET_ERROR_MSG("Error getting size of potentially new message queue");
+      return RMW_RET_ERROR;
+    }
     if (0 == st.st_size) {
       // TODO(nightduck): Use history policy more intelligently so page alignment can inform depth
       size_t mq_size = sizeof(message_queue_t) + data->depth * sizeof(ref_bits_t) +
@@ -263,6 +278,7 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
     if (fstat(it->fd, &st)) {
       perror("fstat");
       RMW_SET_ERROR_MSG("Error getting size of message queue");
+      return RMW_RET_ERROR;
     }
 
     // TODO(nightduck): Use history policy more intelligently so page alignment can reccomend depth
@@ -271,7 +287,10 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
       data->depth * mq->num_domains * sizeof(entry_t);
 
     // Remove old copy
-    munmap(mq, st.st_size);
+    if (-1 == munmap(mq, st.st_size)) {
+      RMW_SET_ERROR_MSG("Unable to unmap message queue during resize");
+      return RMW_RET_ERROR;
+    }
 
     // Resize
     if (-1 == ftruncate(it->fd, mq_size)) {
@@ -280,7 +299,11 @@ hazcat_register_pub_or_sub(pub_sub_data_t * data, const char * topic_name)
     }
 
     // Remap it
-    fstat(it->fd, &st);
+    if (fstat(it->fd, &st)) {
+      perror("fstat");
+      RMW_SET_ERROR_MSG("Error getting new size of message queue");
+      return RMW_RET_ERROR;
+    }
     mq = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, it->fd, 0);
     if (MAP_FAILED == mq) {
       RMW_SET_ERROR_MSG("Failed to map shared message queue into process");
@@ -402,7 +425,7 @@ hazcat_publish(const rmw_publisher_t * pub, void * msg, size_t len)
     for (int d = 0; d < DOMAINS_PER_TOPIC; d++) {
       if (ref_bits->availability & (1 << d)) {
         entry_t * entry = get_entry(mq, d, i);
-        hma_allocator_t * src_alloc = hashtable_get(ht, entry->alloc_shmem_id);
+        hma_allocator_t * src_alloc = lookup_allocator(entry->alloc_shmem_id);
         DEALLOCATE(src_alloc, entry->offset);
       }
     }
@@ -432,8 +455,15 @@ hazcat_publish(const rmw_publisher_t * pub, void * msg, size_t len)
   }
 
   // Signal that data was published
-  if (-1 == fcntl(((pub_sub_data_t *)pub->data)->mq->signalfd, F_SETSIG, SIGMSG)) {
-    perror("fcntl");
+  // Signals aren't being caught be epoll and I have no idea why
+  // if (-1 == fcntl(((pub_sub_data_t *)pub->data)->mq->signalfd, F_SETSIG, SIGMSG)) {
+  //   perror("fcntl");
+  //   RMW_SET_ERROR_MSG("Failed to signal message availability");
+  //   return RMW_RET_ERROR;
+  // }
+  char dummy = 'e';
+  if (0 >= write(((pub_sub_data_t *)pub->data)->mq->signalfd, &dummy, 1)) {
+    perror("write");
     RMW_SET_ERROR_MSG("Failed to signal message availability");
     return RMW_RET_ERROR;
   }
@@ -481,7 +511,7 @@ hazcat_take(const rmw_subscription_t * sub)
     entry_t * entry = get_entry(mq, ((pub_sub_data_t *)sub->data)->array_num, i);
 
     // Lookup src allocator with hashtable mapping shm id to mem address
-    hma_allocator_t * src_alloc = hashtable_get(ht, entry->alloc_shmem_id);
+    hma_allocator_t * src_alloc = lookup_allocator(entry->alloc_shmem_id);
 
     void * msg = GET_PTR(src_alloc, entry->offset, void);
 
@@ -501,7 +531,7 @@ hazcat_take(const rmw_subscription_t * sub)
     entry_t * entry = get_entry(mq, d, i);
 
     // Lookup src allocator with hashtable mapping shm id to mem address
-    hma_allocator_t * src_alloc = hashtable_get(ht, entry->alloc_shmem_id);
+    hma_allocator_t * src_alloc = lookup_allocator(entry->alloc_shmem_id);
 
     void * msg = GET_PTR(src_alloc, entry->offset, void);
 
@@ -541,7 +571,7 @@ hazcat_take(const rmw_subscription_t * sub)
     for (int d = 0; d < mq->num_domains; d++) {
       if (ref_bits->availability & (1 << d)) {
         entry_t * entry = get_entry(mq, d, i);
-        hma_allocator_t * src_alloc = hashtable_get(ht, entry->alloc_shmem_id);
+        hma_allocator_t * src_alloc = lookup_allocator(entry->alloc_shmem_id);
         DEALLOCATE(src_alloc, entry->offset);
       }
     }
@@ -604,7 +634,11 @@ hazcat_unregister_publisher(rmw_publisher_t * pub)
     // destroy_guard_condition_impl(&mq_list.elem->gc_impl);
 
     struct stat st;
-    fstat(it->fd, &st);
+    if (fstat(it->fd, &st)) {
+      perror("fstat");
+      RMW_SET_ERROR_MSG("Error getting size of message queue for destruction");
+      return RMW_RET_ERROR;
+    }
     if (munmap(it->elem, st.st_size)) {
       RMW_SET_ERROR_MSG("Error unmapping message queue");
       return RMW_RET_ERROR;
@@ -662,7 +696,11 @@ hazcat_unregister_subscription(rmw_subscription_t * sub)
     // destroy_guard_condition_impl(&mq_list.elem->gc_impl);
 
     struct stat st;
-    fstat(it->fd, &st);
+    if (fstat(it->fd, &st)) {
+      perror("fstat");
+      RMW_SET_ERROR_MSG("Error getting size of message queue for destruction");
+      return RMW_RET_ERROR;
+    }
     if (munmap(it->elem, st.st_size)) {
       RMW_SET_ERROR_MSG("Error unmapping message queue");
       return RMW_RET_ERROR;
@@ -696,7 +734,7 @@ get_matching_alloc(const rmw_subscription_t * sub, const void * msg)
     int index = recent - i;
     entry_t * entry = get_entry(mq, ((pub_sub_data_t *)sub->data)->array_num, index);
 
-    hma_allocator_t * msg_alloc = hashtable_get(ht, entry->alloc_shmem_id);
+    hma_allocator_t * msg_alloc = lookup_allocator(entry->alloc_shmem_id);
     void * entry_msg = GET_PTR(msg_alloc, entry->offset, void);
     if (entry_msg == msg) {
       return msg_alloc;

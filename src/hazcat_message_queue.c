@@ -414,8 +414,8 @@ hazcat_publish(const rmw_publisher_t * pub, void * msg, size_t len)
   while (!atomic_compare_exchange_weak(&(mq->index), &v, v % mq->len)) {continue;}
 
   // Get reference bits and entry to edit
-  ref_bits_t * ref_bits = get_ref_bits(mq, i);
-  entry_t * entry = get_entry(mq, domain_col, i);
+  volatile ref_bits_t * ref_bits = get_ref_bits(mq, i);
+  volatile entry_t * entry = get_entry(mq, domain_col, i);
 
   // Lock entire row
   lock_domain(&ref_bits->lock, 0xFF);
@@ -519,6 +519,9 @@ hazcat_take(const rmw_subscription_t * sub)
     SHARE(src_alloc, entry->offset);
     ret.alloc = src_alloc;
     ret.msg = msg;
+
+    // DEBUGGING
+    // dump_message_queue(mq);
   } else {
     // Find first domain with a copy of this message
     // TODO(nightduck): If an allocator can bypass CPU domain on copy, they might have a
@@ -564,6 +567,9 @@ hazcat_take(const rmw_subscription_t * sub)
 
     ret.alloc = alloc;
     ret.msg = here;
+
+    // DEBUGGING
+    // dump_message_queue(mq);
   }
 
   // Message queue holds one copy of each message. If this is the last subscriber, free it
@@ -721,17 +727,20 @@ hazcat_unregister_subscription(rmw_subscription_t * sub)
   return RMW_RET_OK;
 }
 
+// TODO(nightduck): Implement read lock. Otherwise, this creates an cosmetic race condition.
 hma_allocator_t *
 get_matching_alloc(const rmw_subscription_t * sub, const void * msg)
 {
   message_queue_t * mq = ((pub_sub_data_t *)sub->data)->mq->elem;
+
+  // dump_message_queue(mq);
 
   int recent = ((pub_sub_data_t *)sub->data)->next_index;
   if (recent < ((pub_sub_data_t *)sub->data)->depth) {
     recent += mq->len;
   }
   for (int i = 1; i < ((pub_sub_data_t *)sub->data)->depth; i++) {
-    int index = recent - i;
+    int index = (recent - i) % mq->len;
     entry_t * entry = get_entry(mq, ((pub_sub_data_t *)sub->data)->array_num, index);
 
     hma_allocator_t * msg_alloc = lookup_allocator(entry->alloc_shmem_id);
@@ -743,6 +752,40 @@ get_matching_alloc(const rmw_subscription_t * sub, const void * msg)
 
   // Message doesn't match
   return NULL;
+}
+
+void
+dump_message_queue(const message_queue_t * mq)
+{
+  printf("Index:       %d\n", mq->index);
+  printf("Len:         %lu\n", mq->len);
+  printf("Num domains: %lu\n", mq->num_domains);
+  printf("Domains: \n");
+  for (int i = 0; i < DOMAINS_PER_TOPIC; i++) {
+    printf("  %02d: %x\n", i, mq->domains[i]);
+  }
+  printf("Pub count:   %d\n", mq->pub_count);
+  printf("Sub count:   %d\n", mq->sub_count);
+
+  printf("Message queue contents\n");
+  ref_bits_t * ref_bits = (ref_bits_t *)(mq + 1);
+  for (int i = 0; i < mq->len; i++) {
+    printf("  %03d - interest_count: %d\n", i, ref_bits[i].interest_count);
+    printf("  %03d - availability:   %d\n", i, ref_bits[i].availability);
+    printf("  %03d - lock:           %lu\n", i, ref_bits[i].lock);
+
+    entry_t * entries = (entry_t *)((uint8_t *)ref_bits + mq->len * sizeof(ref_bits_t));
+    for (int j = 0; j < mq->num_domains; j++) {
+      if (mq->num_domains > 1) {
+        printf("    Domain %d\n", j);
+      }
+      printf("    shmem_id: %d\n", entries[i].alloc_shmem_id);
+      printf("    offset:   %d\n", entries[i].offset);
+      printf("    len:      %lu\n", entries[i].len);
+      entries = (entry_t *)((uint8_t *)entries + mq->len * sizeof(entry_t));
+    }
+  }
+  printf("\n");
 }
 #ifdef __cplusplus
 }

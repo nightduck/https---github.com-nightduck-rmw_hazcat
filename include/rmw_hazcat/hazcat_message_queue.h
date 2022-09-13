@@ -74,6 +74,10 @@ hazcat_unregister_subscription(rmw_subscription_t * sub);
 hma_allocator_t *
 get_matching_alloc(const rmw_subscription_t * sub, const void * msg);
 
+// Used for debugging
+void
+dump_message_queue(const message_queue_t * mq);
+
 #ifdef __cplusplus
 }
 #endif

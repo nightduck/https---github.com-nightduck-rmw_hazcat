@@ -18,7 +18,7 @@
 #include "rmw/rmw.h"
 #include "rmw/types.h"
 
-#include "rmw_hazcat/hazcat_message_queue.h"
+#include "hazcat/hazcat_message_queue.h"
 
 #ifdef __cplusplus
 extern "C"

@@ -24,8 +24,8 @@
 #include "rmw/validate_namespace.h"
 #include "rmw/validate_node_name.h"
 
-#include "rmw_hazcat/allocators/cpu_ringbuf_allocator.h"
-#include "rmw_hazcat/hazcat_message_queue.h"
+#include "hazcat_allocators/cpu_ringbuf_allocator.h"
+#include "hazcat/hazcat_message_queue.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -272,7 +272,8 @@ rmw_publish(
   hma_allocator_t * alloc = ((pub_sub_data_t *)publisher->data)->alloc;
   int offset = ALLOCATE(alloc, size);
   if (offset < 0) {
-    RMW_SET_ERROR_MSG("unable to allocate memory for message");
+    RMW_SET_ERROR_MSG("unable to allocate memory for message.");
+    printf("Size requested: %d\n", size);
     return RMW_RET_ERROR;
   }
   void * zc_msg = GET_PTR(alloc, offset, void);

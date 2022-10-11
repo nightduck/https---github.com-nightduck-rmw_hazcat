@@ -18,8 +18,8 @@
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
 
-#include "rmw_hazcat/types.h"
-#include "rmw_hazcat/guard_condition.h"
+#include "hazcat/types.h"
+#include "hazcat/guard_condition.h"
 
 #ifdef __cplusplus
 extern "C"

@@ -28,7 +28,7 @@
 #include "rmw/validate_namespace.h"
 #include "rmw/validate_node_name.h"
 
-#include "rmw_hazcat/hazcat_message_queue.h"
+#include "hazcat/hazcat_message_queue.h"
 
 #ifdef __cplusplus
 extern "C"

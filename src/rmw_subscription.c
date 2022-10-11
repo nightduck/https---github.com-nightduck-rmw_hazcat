@@ -24,8 +24,8 @@
 #include "rmw/validate_namespace.h"
 #include "rmw/validate_node_name.h"
 
-#include "rmw_hazcat/allocators/cpu_ringbuf_allocator.h"
-#include "rmw_hazcat/hazcat_message_queue.h"
+#include "hazcat_allocators/cpu_ringbuf_allocator.h"
+#include "hazcat/hazcat_message_queue.h"
 
 #ifdef __cplusplus
 extern "C"

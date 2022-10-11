@@ -33,7 +33,7 @@
 #include "rmw/error_handling.h"
 #include "rmw/rmw.h"
 
-#include "rmw_hazcat/types.h"
+#include "hazcat/types.h"
 
 using std::atomic;
 using std::atomic_int;

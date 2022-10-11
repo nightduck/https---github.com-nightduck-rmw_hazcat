@@ -34,10 +34,10 @@
 #include "test_msgs/msg/bounded_sequences.hpp"
 #include "std_msgs/msg/int32.hpp"
 
-#include "rmw_hazcat/allocators/cpu_ringbuf_allocator.h"
-#include "rmw_hazcat/allocators/cuda_ringbuf_allocator.h"
-#include "rmw_hazcat/hazcat_message_queue.h"
-#include "rmw_hazcat/hashtable.h"
+#include "hazcat_allocators/cpu_ringbuf_allocator.h"
+#include "hazcat_allocators/cuda_ringbuf_allocator.h"
+#include "hazcat/hazcat_message_queue.h"
+#include "hazcat/hashtable.h"
 
 uint8_t deref(uint8_t * ptr)
 {

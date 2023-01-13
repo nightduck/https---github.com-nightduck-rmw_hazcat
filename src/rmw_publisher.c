@@ -144,6 +144,7 @@ rmw_create_publisher(
   data->msg_size = msg_size;
   data->gid = generate_gid();
   data->context = node->context;
+  sem_init(&data->lock, 0, 1);
 
   pub->implementation_identifier = rmw_get_implementation_identifier();
   pub->data = data;

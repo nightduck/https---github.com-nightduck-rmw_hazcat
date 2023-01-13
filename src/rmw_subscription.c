@@ -119,6 +119,7 @@ rmw_create_subscription(
   data->depth = qos_policies->depth;
   data->msg_size = msg_size;
   data->context = node->context;
+  sem_init(&data->lock, 0, 1);
 
   sub->implementation_identifier = rmw_get_implementation_identifier();
   sub->data = data;

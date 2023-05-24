@@ -294,6 +294,11 @@ TEST_F(MessageQueueTest, creation_and_registration) {
 TEST_F(MessageQueueTest, basic_rw) {
   message_queue_t * mq = mq_node->elem;
 
+  ref_bits_t * ref_bits_msg1 = get_ref_bits(mq, 0);
+  ref_bits_t * ref_bits_msg2 = get_ref_bits(mq, 1);
+  entry_t * entry_msg1 = get_entry(mq, 0, 0);
+  entry_t * entry_msg2 = get_entry(mq, 0, 1);
+
   // Test take, should expect empty message
   msg_ref_t msg_ref = hazcat_take(cpu_sub);
   EXPECT_EQ(msg_ref.alloc, nullptr);
@@ -306,35 +311,36 @@ TEST_F(MessageQueueTest, basic_rw) {
   int64_t * msg2 = GET_PTR(cpu_alloc, msg2_offset, int64_t);
   ASSERT_EQ(hazcat_publish(cpu_pub, msg1, 8), RMW_RET_OK);
   EXPECT_EQ(mq->index, 1);
-  ref_bits_t * ref_bits = get_ref_bits(mq, 0);
-  entry_t * entry = get_entry(mq, 0, 0);
-  EXPECT_EQ(ref_bits->availability, 0x1);
-  EXPECT_EQ(ref_bits->interest_count, 1);
-  EXPECT_EQ(ref_bits->lock, 0);
-  EXPECT_EQ(entry->alloc_shmem_id, cpu_alloc->shmem_id);
-  EXPECT_EQ(entry->len, 8);
-  EXPECT_EQ(entry->offset, msg1_offset);
+  EXPECT_EQ(ref_bits_msg1->availability, 0x1);
+  EXPECT_EQ(ref_bits_msg1->interest_count, 1);
+  EXPECT_EQ(ref_bits_msg1->lock, 0);
+  EXPECT_EQ(ref_bits_msg2->availability, 0x0);
+  EXPECT_EQ(ref_bits_msg2->lock, 0);
+  EXPECT_EQ(entry_msg1->alloc_shmem_id, cpu_alloc->shmem_id);
+  EXPECT_EQ(entry_msg1->len, 8);
+  EXPECT_EQ(entry_msg1->offset, msg1_offset);
   ASSERT_EQ(hazcat_publish(cpu_pub, msg2, 8), RMW_RET_OK);
   EXPECT_EQ(mq->index, 2);
-  ref_bits = get_ref_bits(mq, 1);
-  entry = get_entry(mq, 0, 1);
-  EXPECT_EQ(ref_bits->availability, 0x1);
-  EXPECT_EQ(ref_bits->interest_count, 1);
-  EXPECT_EQ(ref_bits->lock, 0);
-  EXPECT_EQ(entry->alloc_shmem_id, cpu_alloc->shmem_id);
-  EXPECT_EQ(entry->len, 8);
-  EXPECT_EQ(entry->offset, msg2_offset);
+  EXPECT_EQ(ref_bits_msg1->availability, 0x1);
+  EXPECT_EQ(ref_bits_msg1->interest_count, 1);
+  EXPECT_EQ(ref_bits_msg1->lock, 0);
+  EXPECT_EQ(ref_bits_msg2->availability, 0x1);
+  EXPECT_EQ(ref_bits_msg2->interest_count, 1);
+  EXPECT_EQ(ref_bits_msg2->lock, 0);
+  EXPECT_EQ(entry_msg2->alloc_shmem_id, cpu_alloc->shmem_id);
+  EXPECT_EQ(entry_msg2->len, 8);
+  EXPECT_EQ(entry_msg2->offset, msg2_offset);
 
   // Test take, should only receive most recent message
   msg_ref = hazcat_take(cpu_sub);
   EXPECT_EQ(msg_ref.msg, msg2);
   EXPECT_EQ(msg_ref.alloc, reinterpret_cast<hma_allocator_t *>(cpu_alloc));
-  EXPECT_EQ(ref_bits->availability, 0x1);
-  EXPECT_EQ(ref_bits->interest_count, 0);
-  EXPECT_EQ(ref_bits->lock, 0);
-  EXPECT_EQ(entry->alloc_shmem_id, cpu_alloc->shmem_id);
-  EXPECT_EQ(entry->len, 8);
-  EXPECT_EQ(entry->offset, msg2_offset);
+  EXPECT_EQ(ref_bits_msg2->availability, 0x0);
+  EXPECT_EQ(ref_bits_msg2->interest_count, 0);
+  EXPECT_EQ(ref_bits_msg2->lock, 0);
+  EXPECT_EQ(entry_msg2->alloc_shmem_id, cpu_alloc->shmem_id);
+  EXPECT_EQ(entry_msg2->len, 8);
+  EXPECT_EQ(entry_msg2->offset, msg2_offset);
 
   // Test take, should expect empty message
   msg_ref = hazcat_take(cpu_sub);
@@ -507,8 +513,8 @@ TEST_F(MessageQueueTest, multi_domain_rw) {
   EXPECT_NE(cpu_msg2, msg2);
   EXPECT_NE(cpu_msg2, msg1);
   EXPECT_EQ(msg_ref.alloc, reinterpret_cast<hma_allocator_t *>(cpu_alloc));
-  EXPECT_EQ(ref_bits->availability, 0x3);
-  EXPECT_EQ(ref_bits->interest_count, 1);
+  EXPECT_EQ(ref_bits->availability, 0x3);   // NOTE: Once domain-specific deallocations are
+  EXPECT_EQ(ref_bits->interest_count, 1);   // implemented, above line may be 0x1
   EXPECT_EQ(ref_bits->lock, 0);
   entry = get_entry(mq, 0, 3);
   EXPECT_EQ(entry->alloc_shmem_id, cpu_alloc->shmem_id);
@@ -521,7 +527,7 @@ TEST_F(MessageQueueTest, multi_domain_rw) {
   msg_ref = hazcat_take(cpu_sub2);
   EXPECT_EQ(msg_ref.msg, reinterpret_cast<void *>(cpu_msg2));
   EXPECT_EQ(msg_ref.alloc, reinterpret_cast<hma_allocator_t *>(cpu_alloc));
-  EXPECT_EQ(ref_bits->availability, 0x3);
+  EXPECT_EQ(ref_bits->availability, 0x0);
   EXPECT_EQ(ref_bits->interest_count, 0);
   EXPECT_EQ(ref_bits->lock, 0);
 }

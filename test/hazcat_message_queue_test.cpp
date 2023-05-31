@@ -300,7 +300,7 @@ TEST_F(MessageQueueTest, basic_rw) {
   entry_t * entry_msg2 = get_entry(mq, 0, 1);
 
   // Test take, should expect empty message
-  msg_ref_t msg_ref = hazcat_take(cpu_sub);
+  msg_ref_t msg_ref = hazcat_take((sub_data_t*)cpu_sub->data);
   EXPECT_EQ(msg_ref.alloc, nullptr);
   EXPECT_EQ(msg_ref.msg, nullptr);
 
@@ -309,7 +309,7 @@ TEST_F(MessageQueueTest, basic_rw) {
   int64_t * msg1 = GET_PTR(cpu_alloc, msg1_offset, int64_t);
   int msg2_offset = ALLOCATE(cpu_alloc, 8);
   int64_t * msg2 = GET_PTR(cpu_alloc, msg2_offset, int64_t);
-  ASSERT_EQ(hazcat_publish(cpu_pub, msg1, 8), RMW_RET_OK);
+  ASSERT_EQ(hazcat_publish((pub_data_t*)cpu_pub->data, msg1, 8), RMW_RET_OK);
   EXPECT_EQ(mq->index, 1);
   EXPECT_EQ(ref_bits_msg1->availability, 0x1);
   EXPECT_EQ(ref_bits_msg1->interest_count, 1);
@@ -319,7 +319,7 @@ TEST_F(MessageQueueTest, basic_rw) {
   EXPECT_EQ(entry_msg1->alloc_shmem_id, cpu_alloc->shmem_id);
   EXPECT_EQ(entry_msg1->len, 8);
   EXPECT_EQ(entry_msg1->offset, msg1_offset);
-  ASSERT_EQ(hazcat_publish(cpu_pub, msg2, 8), RMW_RET_OK);
+  ASSERT_EQ(hazcat_publish((pub_data_t*)cpu_pub->data, msg2, 8), RMW_RET_OK);
   EXPECT_EQ(mq->index, 2);
   EXPECT_EQ(ref_bits_msg1->availability, 0x1);
   EXPECT_EQ(ref_bits_msg1->interest_count, 1);
@@ -332,7 +332,7 @@ TEST_F(MessageQueueTest, basic_rw) {
   EXPECT_EQ(entry_msg2->offset, msg2_offset);
 
   // Test take, should only receive most recent message
-  msg_ref = hazcat_take(cpu_sub);
+  msg_ref = hazcat_take((sub_data_t*)cpu_sub->data);
   EXPECT_EQ(msg_ref.msg, msg2);
   EXPECT_EQ(msg_ref.alloc, reinterpret_cast<hma_allocator_t *>(cpu_alloc));
   EXPECT_EQ(ref_bits_msg2->availability, 0x0);
@@ -343,7 +343,7 @@ TEST_F(MessageQueueTest, basic_rw) {
   EXPECT_EQ(entry_msg2->offset, msg2_offset);
 
   // Test take, should expect empty message
-  msg_ref = hazcat_take(cpu_sub);
+  msg_ref = hazcat_take((sub_data_t*)cpu_sub->data);
   EXPECT_EQ(msg_ref.alloc, nullptr);
   EXPECT_EQ(msg_ref.msg, nullptr);
 }
@@ -447,7 +447,7 @@ TEST_F(MessageQueueTest, multi_domain_rw) {
   int msg1_offset = ALLOCATE(cpu_alloc, 8);
   int64_t * msg1 = GET_PTR(cpu_alloc, msg1_offset, int64_t);
   *msg1 = 0xDEADBEEF;
-  ASSERT_EQ(hazcat_publish(cpu_pub, msg1, 8), RMW_RET_OK);
+  ASSERT_EQ(hazcat_publish((pub_data_t*)cpu_pub->data, msg1, 8), RMW_RET_OK);
   EXPECT_EQ(mq->index, 3);
   ref_bits = get_ref_bits(mq, 2);
   entry = get_entry(mq, 0, 2);
@@ -459,7 +459,7 @@ TEST_F(MessageQueueTest, multi_domain_rw) {
   EXPECT_EQ(entry->offset, msg1_offset);
 
   // Read on CPU, verify message is same
-  msg_ref = hazcat_take(cpu_sub2);
+  msg_ref = hazcat_take((sub_data_t*)cpu_sub2->data);
   EXPECT_EQ(msg_ref.msg, msg1);
   EXPECT_EQ(msg_ref.alloc, reinterpret_cast<hma_allocator_t *>(cpu_alloc));
   EXPECT_EQ(ref_bits->availability, 0x1);
@@ -470,7 +470,7 @@ TEST_F(MessageQueueTest, multi_domain_rw) {
   EXPECT_EQ(entry->offset, msg1_offset);
 
   // Read on GPU sub
-  msg_ref = hazcat_take(cuda_sub);
+  msg_ref = hazcat_take((sub_data_t*)cuda_sub->data);
   EXPECT_NE(msg_ref.msg, msg1);
   EXPECT_EQ(msg_ref.alloc, reinterpret_cast<hma_allocator_t *>(cuda_alloc));
   EXPECT_EQ(ref_bits->availability, 0x3);
@@ -484,7 +484,7 @@ TEST_F(MessageQueueTest, multi_domain_rw) {
   int msg2_offset = reinterpret_cast<uint8_t *>(msg_ref.msg) -
     reinterpret_cast<uint8_t *>(msg_ref.alloc);
   int64_t * msg2 = reinterpret_cast<int64_t *>(msg_ref.msg);
-  ASSERT_EQ(hazcat_publish(cuda_pub, msg2, 8), RMW_RET_OK);
+  ASSERT_EQ(hazcat_publish((pub_data_t*)cuda_pub->data, msg2, 8), RMW_RET_OK);
   EXPECT_EQ(mq->index, 4);
   ref_bits = get_ref_bits(mq, 3);
   entry = get_entry(mq, 1, 3);
@@ -496,7 +496,7 @@ TEST_F(MessageQueueTest, multi_domain_rw) {
   EXPECT_EQ(entry->offset, msg2_offset);
 
   // Read on GPU sub, message addr should match, but be at separate entry in message queue
-  msg_ref = hazcat_take(cuda_sub);
+  msg_ref = hazcat_take((sub_data_t*)cuda_sub->data);
   EXPECT_EQ(msg_ref.msg, msg2);
   EXPECT_NE(msg_ref.msg, msg1);
   EXPECT_EQ(msg_ref.alloc, reinterpret_cast<hma_allocator_t *>(cuda_alloc));
@@ -507,7 +507,7 @@ TEST_F(MessageQueueTest, multi_domain_rw) {
   EXPECT_EQ(entry->len, 8);
 
   // Read on goldfish memory sub, verify correct entry was read and copied over
-  msg_ref = hazcat_take(cpu_sub);
+  msg_ref = hazcat_take((sub_data_t*)cpu_sub->data);
   int64_t * cpu_msg2 = reinterpret_cast<int64_t *>(msg_ref.msg);
   EXPECT_EQ(*cpu_msg2, *msg1);
   EXPECT_NE(cpu_msg2, msg2);
@@ -524,7 +524,7 @@ TEST_F(MessageQueueTest, multi_domain_rw) {
     reinterpret_cast<uint8_t *>(cpu_msg2));
 
   // Read on other CPU sub, message addr should match previous sub read
-  msg_ref = hazcat_take(cpu_sub2);
+  msg_ref = hazcat_take((sub_data_t*)cpu_sub2->data);
   EXPECT_EQ(msg_ref.msg, reinterpret_cast<void *>(cpu_msg2));
   EXPECT_EQ(msg_ref.alloc, reinterpret_cast<hma_allocator_t *>(cpu_alloc));
   EXPECT_EQ(ref_bits->availability, 0x0);
@@ -538,7 +538,7 @@ TEST_F(MessageQueueTest, unregister_cuda) {
   rmw_subscription_t * cuda_sub = MessageQueueTest::cuda_sub;
 
   hma_allocator_t * cuda_alloc = reinterpret_cast<hma_allocator_t *>(
-    reinterpret_cast<pub_sub_data_t *>(cuda_pub->data)->alloc);
+    reinterpret_cast<sub_data_t *>(cuda_pub->data)->alloc);
 
   EXPECT_EQ(RMW_RET_OK, rmw_destroy_publisher(node, cuda_pub));
 

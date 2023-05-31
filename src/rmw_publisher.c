@@ -280,7 +280,7 @@ rmw_publish(
   void * zc_msg = GET_PTR(alloc, offset, void);
   memcpy(zc_msg, ros_message, size);
 
-  return hazcat_publish(publisher, zc_msg, size);
+  return hazcat_publish(publisher->data, zc_msg, size);
 }
 
 rmw_ret_t
@@ -363,7 +363,7 @@ rmw_publish_loaned_message(
   // TODO(nightduck): Implement per-message size, in case messages are smaller than upper bound
   size_t size = ((pub_sub_data_t *)publisher->data)->msg_size;
 
-  return hazcat_publish(publisher, ros_message, size);
+  return hazcat_publish(publisher->data, ros_message, size);
 }
 
 rmw_ret_t rmw_get_publishers_info_by_topic(

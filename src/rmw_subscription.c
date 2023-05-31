@@ -212,7 +212,7 @@ rmw_take(
   // TODO(nightduck): Implement per-message size, in case messages are smaller than upper bound
   size_t size = ((pub_sub_data_t *)subscription->data)->msg_size;
 
-  msg_ref_t msg_ref = hazcat_take(subscription);
+  msg_ref_t msg_ref = hazcat_take(subscription->data);
   if (NULL == msg_ref.msg) {
     *taken = false;
     return RMW_RET_OK;
@@ -250,7 +250,7 @@ rmw_take_with_info(
   // TODO(nightduck): Implement per-message size, in case messages are smaller than upper bound
   size_t size = ((pub_sub_data_t *)subscription->data)->msg_size;
 
-  msg_ref_t msg_ref = hazcat_take(subscription);
+  msg_ref_t msg_ref = hazcat_take(subscription->data);
   if (NULL == msg_ref.msg) {
     *taken = false;
     return RMW_RET_OK;
@@ -318,7 +318,7 @@ rmw_take_loaned_message(
     return RMW_RET_INCORRECT_RMW_IMPLEMENTATION;
   }
 
-  msg_ref_t msg_ref = hazcat_take(subscription);
+  msg_ref_t msg_ref = hazcat_take(subscription->data);
   *loaned_message = msg_ref.msg;
   if (NULL == *loaned_message) {
     *taken = false;
@@ -350,7 +350,7 @@ rmw_take_loaned_message_with_info(
   // TODO(nightduck): Populate message_info
   (void *)message_info;
 
-  msg_ref_t msg_ref = hazcat_take(subscription);
+  msg_ref_t msg_ref = hazcat_take(subscription->data);
   *loaned_message = msg_ref.msg;
   if (NULL == *loaned_message) {
     *taken = false;

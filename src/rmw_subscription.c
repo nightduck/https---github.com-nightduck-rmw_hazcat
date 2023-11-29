@@ -133,7 +133,7 @@ rmw_create_subscription(
   }
   snprintf(sub->topic_name, strlen(topic_name) + 1, topic_name);
 
-  if (RMW_RET_OK != (ret = hazcat_register_subscription(sub))) {
+  if (RMW_RET_OK != (ret = hazcat_register_subscription(sub->data, topic_name))) {
     return NULL;
   }
 
@@ -155,7 +155,7 @@ rmw_destroy_subscription(
   }
 
   // Remove publisher from it's message queue
-  rmw_ret_t ret = hazcat_unregister_subscription(subscription);
+  rmw_ret_t ret = hazcat_unregister_subscription(subscription->data);
   if (RMW_RET_OK != ret) {
     return ret;
   }

@@ -158,7 +158,7 @@ rmw_create_publisher(
   }
   snprintf(pub->topic_name, strlen(topic_name) + 1, topic_name);
 
-  if (RMW_RET_OK != (ret = hazcat_register_publisher(pub))) {
+  if (RMW_RET_OK != (ret = hazcat_register_publisher(pub->data, pub->topic_name))) {
     return NULL;
   }
 
@@ -178,7 +178,7 @@ rmw_destroy_publisher(rmw_node_t * node, rmw_publisher_t * publisher)
   }
 
   // Remove publisher from it's message queue
-  rmw_ret_t ret = hazcat_unregister_publisher(publisher);
+  rmw_ret_t ret = hazcat_unregister_publisher(publisher->data);
   if (RMW_RET_OK != ret) {
     return ret;
   }
